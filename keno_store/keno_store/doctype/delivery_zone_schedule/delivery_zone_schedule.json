@@ -1,0 +1,90 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:delivery_zone",
+ "creation": "2024-08-31 13:29:29.091772",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "delivery_zone",
+  "monday_slots",
+  "tuesday_slots",
+  "wednesday_slots",
+  "thursday_slots",
+  "friday_slots",
+  "satusday_slots"
+ ],
+ "fields": [
+  {
+   "description": "Links to the Zone Doctype, indicating which zone this schedule applies to",
+   "fieldname": "delivery_zone",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Zone",
+   "options": "Delivery Zone",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "monday_slots",
+   "fieldtype": "Table",
+   "label": "Monday Slots",
+   "options": "Delivery Slot"
+  },
+  {
+   "fieldname": "tuesday_slots",
+   "fieldtype": "Table",
+   "label": "Tuesday Slots",
+   "options": "Delivery Slot"
+  },
+  {
+   "fieldname": "wednesday_slots",
+   "fieldtype": "Table",
+   "label": "Wednesday Slots ",
+   "options": "Delivery Slot"
+  },
+  {
+   "fieldname": "thursday_slots",
+   "fieldtype": "Table",
+   "label": "Thursday Slots",
+   "options": "Delivery Slot"
+  },
+  {
+   "fieldname": "friday_slots",
+   "fieldtype": "Table",
+   "label": "Friday Slots",
+   "options": "Delivery Slot"
+  },
+  {
+   "fieldname": "satusday_slots",
+   "fieldtype": "Table",
+   "label": "Saturday Slots",
+   "options": "Delivery Slot"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-08-31 15:05:58.972118",
+ "modified_by": "Administrator",
+ "module": "Keno Store",
+ "name": "Delivery Zone Schedule",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

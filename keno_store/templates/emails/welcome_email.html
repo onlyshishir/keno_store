@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Keno Store</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f7f7f7;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 8px 8px 0 0;
+        }
+        .content {
+            padding: 20px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #888;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to Keno Store!</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{ customer_name }},</p>
+            <p>We are thrilled to have you with us at Keno Store! Thank you for signing up.</p>
+            <p>At Keno Store, we are committed to providing you with the freshest groceries delivered right to your doorstep. Explore our wide range of products, and start shopping with ease!</p>
+            <p>If you have any questions or need assistance, feel free to contact our support team at any time.</p>
+            <p>Happy shopping!</p>
+            <p>Best regards,</p>
+            <p>The Keno Store Team</p>
+            <a href="http://keno.localhost" class="button">Start Shopping</a>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 Keno Store. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
