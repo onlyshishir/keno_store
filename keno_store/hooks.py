@@ -229,5 +229,6 @@ app_license = "mit"
 
 override_whitelisted_methods = {
     # "GET /api/method/keno_store.api.get_zone_by_zip": "keno_store.api.get_zone_by_zip",
-    "POST /api/method/keno_store.api.signup_customer": "keno_store.api.signup_customer"
+    "POST /api/method/keno_store.api.signup_customer": "keno_store.api.signup_customer",
+    "POST /api/method/keno_store.auth_api.custom_login": "keno_store.auth_api.custom_login"
 }

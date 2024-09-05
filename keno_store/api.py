@@ -72,9 +72,10 @@ def signup_customer(full_name, email, mobile=None, password=None, confirm_passwo
             "last_name": " ".join(full_name.split()[1:]),  # Assumes last name is the rest
             "enabled": 1,
             "user_type": "Website User",
-            "roles": [
-                {"role": "Customer"}  # Add Customer role to the user
-            ],
+            # "roles": [
+            #     {"role": "Customer"}  # Add Customer role to the user
+            # ],
+            "role_profile_name": "Customer",
             "new_password": password,  # Set the user's password
             "send_welcome_email": 0  # Avoid sending the welcome email automatically
         })
