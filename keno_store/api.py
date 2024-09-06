@@ -381,17 +381,15 @@ def get_website_item_details(item_code):
         return {"error": "An unexpected error occurred. Please try again later."}, 500
 
 
-def get_stock_availability(item_details, warehouse):
+def get_stock_availability(item):
     """Modify item object and add stock details."""
     from webshop.templates.pages.wishlist import (
         get_stock_availability as get_stock_availability_from_template,
 	)
-    item_details.update({
-        "is_stock_item": False
-    })
-    logger.debug(item_details)
-    logger.debug(warehouse)
-    item_details.is_in_stock = get_stock_availability_from_template(item_details.item_code, warehouse)
+    # item.update({
+    #     "is_stock_item": False
+    # })
+    item.is_in_stock = get_stock_availability_from_template(item.item_code, item.warehouse)
     # # warehouse = item_details.get("website_warehouse")
     # is_stock_item = frappe.get_cached_value("Item", item_details.item_code, "is_stock_item")
     # logger.debug(is_stock_item)
@@ -941,3 +939,140 @@ def get_special_discount_items(limit=10):
     except Exception as e:
         frappe.log_error(f"Failed to get hot deals: {str(e)}")
         return {"exc": "Something went wrong!"}
+    
+
+@frappe.whitelist()
+def add_to_wishlist(item_code):
+    try:
+        # Check if item already exists in the wishlist
+        if frappe.db.exists("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}):
+            return {"message": "Item already in wishlist"}
+        
+        # Fetch Web Item Data by item_code
+        web_item_data = frappe.db.get_value(
+            "Website Item",
+            {"item_code": item_code},
+            [
+                "website_image",
+                "website_warehouse",
+                "name",
+                "web_item_name",
+                "item_name",
+                "item_group",
+                "route",
+            ],
+            as_dict=1,
+        )
+
+        # Prepare the item to be added
+        wished_item_dict = {
+            "item_code": item_code,
+            "item_name": web_item_data.get("item_name"),
+            "item_group": web_item_data.get("item_group"),
+            "website_item": web_item_data.get("name"),
+            "web_item_name": web_item_data.get("web_item_name"),
+            "image": web_item_data.get("website_image"),
+            "warehouse": web_item_data.get("website_warehouse"),
+            "route": web_item_data.get("route"),
+        }
+
+        # Add the item to the wishlist
+        if not frappe.db.exists("Wishlist", frappe.session.user):
+            # initialise wishlist
+            wishlist = frappe.get_doc({"doctype": "Wishlist"})
+            wishlist.user = frappe.session.user
+            wishlist.append("items", wished_item_dict)
+            wishlist.save(ignore_permissions=True)
+        else:
+            wishlist = frappe.get_doc("Wishlist", frappe.session.user)
+            item = wishlist.append("items", wished_item_dict)
+            item.db_insert()
+
+        # Commit the transaction to the database
+        frappe.db.commit()
+        
+        if hasattr(frappe.local, "cookie_manager"):
+            frappe.local.cookie_manager.set_cookie("wish_count", str(len(wishlist.items)))
+
+        return {"message": "Item added to wishlist successfully"}
+
+    except frappe.ValidationError as e:
+        frappe.log_error(f"Error adding item to wishlist: {e}")
+        return {"message": "Failed to add item to wishlist", "error": str(e)}
+
+    except Exception as e:
+        frappe.log_error(f"Unexpected error: {e}")
+        return {"message": "An unexpected error occurred", "error": str(e)}
+    
+
+@frappe.whitelist()
+def remove_from_wishlist(item_code):
+    try:
+        # Check if the item exists in the user's wishlist
+        if frappe.db.exists("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}):
+            # Delete the wishlist item
+            frappe.db.delete("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user})
+            frappe.db.commit()  # Ensure the transaction is committed
+
+            # Fetch updated wishlist items count for the user
+            wishlist_items = frappe.db.get_values("Wishlist Item", filters={"parent": frappe.session.user}, fieldname="name")
+
+            # Update the wish count in cookies
+            if hasattr(frappe.local, "cookie_manager"):
+                frappe.local.cookie_manager.set_cookie("wish_count", str(len(wishlist_items)))
+
+            return {"message": "Item removed from wishlist", "wish_count": len(wishlist_items)}
+        else:
+            return {"message": "Item not found in wishlist", "wish_count": 0}
+
+    except frappe.DoesNotExistError:
+        frappe.log_error(f"Wishlist Item with item_code {item_code} not found for user {frappe.session.user}")
+        return {"error": "Item does not exist in the wishlist"}
+
+    except frappe.ValidationError as e:
+        frappe.log_error(f"Validation error while removing item from wishlist: {e}")
+        return {"error": "There was a validation error"}
+
+    except Exception as e:
+        frappe.log_error(f"Unexpected error while removing item from wishlist: {str(e)}")
+        return {"error": "An unexpected error occurred"}
+
+
+@frappe.whitelist()
+def get_wishlist():
+    try:
+        # Fetch all wishlist items for the current user
+        wishlist_items = frappe.get_all(
+            "Wishlist Item",
+            filters={"parent": frappe.session.user},
+            fields=["item_code", "item_name", "description", "image", "warehouse"]
+        )
+
+        # Loop through wishlist items and append price
+        for item in wishlist_items:
+            get_stock_availability(item)
+            product_info = get_product_info_for_website(item["item_code"], skip_quotation_creation=True).get("product_info")
+            if product_info and product_info["price"]:
+                item.update({
+                    "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                    "formatted_price": product_info["price"].get("formatted_price"),
+                    "price_list_rate": product_info["price"].get("price_list_rate")
+                })
+            if product_info["price"].get("discount_percent"):
+                item.update({
+                    "discount_percent" : flt(product_info["price"].discount_percent)
+                })
+            if item.formatted_mrp:
+                item.update({
+                    "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
+                        "formatted_discount_rate"
+                    )
+                })
+
+        return wishlist_items
+
+    except Exception as e:
+        frappe.log_error(f"Error retrieving wishlist for user {frappe.session.user}: {str(e)}")
+        return {"error": "An error occurred while retrieving the wishlist"}
+
+
