@@ -1,5 +1,8 @@
+import hashlib
+import uuid
 import frappe
 from frappe import _
+from frappe.auth import CookieManager
 from frappe.utils import cint
 from frappe.utils import flt
 import frappe.utils
@@ -158,31 +161,33 @@ def send_welcome_email(email, full_name):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_weekly_schedule_by_zip(zip_code):
+def get_weekly_schedule(zip_code=None):
     try:
-        if not zip_code:
-            frappe.throw(_("Zip code is required"), frappe.exceptions.ValidationError)
+        # Initialize a dictionary to hold the schedule for all zones
+        all_zone_schedules = {}
 
-        # Find the Delivery Zone that contains the given zip code
-        zone = frappe.get_all(
-            "Delivery Zone",
-            filters={"zip_codes": ["like", f"%{zip_code}%"]},
-            fields=["zone_name"],
-            limit_page_length=1  # Ensure only one zone is fetched
-        )
+        # If a zip code is provided, find the specific zone
+        if zip_code:
+            zones = frappe.get_all(
+                "Delivery Zone",
+                filters={"zip_codes": ["like", f"%{zip_code}%"]},
+                fields=["zone_name"],
+                limit_page_length=1  # Ensure only one zone is fetched
+            )
 
-        if not zone:
-            frappe.throw(_("No zone found for the provided zip code: {0}").format(zip_code), frappe.exceptions.DoesNotExistError)
+            if not zones:
+                frappe.throw(_("No zone found for the provided zip code: {0}").format(zip_code), frappe.exceptions.DoesNotExistError)
+        else:
+            # If no zip code is provided, get all zones
+            zones = frappe.get_all(
+                "Delivery Zone",
+                fields=["zone_name"]
+            )
 
-        zone_name = zone[0].zone_name
+            if not zones:
+                frappe.throw(_("No zones found in the system"), frappe.exceptions.DoesNotExistError)
 
-        # Fetch the Delivery Zone Schedule for the found zone
-        schedule_doc = frappe.get_doc("Delivery Zone Schedule", {"delivery_zone": zone_name})
-
-        # Initialize a dictionary to hold the weekly schedule
-        weekly_schedule = {}
-
-        # Weekdays in Frappe format with the corresponding field names for child tables
+        # Weekdays and corresponding field names for child tables
         weekdays = {
             "Monday": "monday_slots",
             "Tuesday": "tuesday_slots",
@@ -193,31 +198,54 @@ def get_weekly_schedule_by_zip(zip_code):
             "Sunday": "sunday_slots"
         }
 
-        # Iterate through each weekday and fetch the delivery slots from the child table
-        for day, field_name in weekdays.items():
-            # Access the child table records from the parent document
-            delivery_slots = [
-                {"start_time": str(slot.start_time), "end_time": str(slot.end_time)}
-                for slot in getattr(schedule_doc, field_name, [])
-            ]
+        # Iterate over each zone and fetch the weekly schedule
+        for zone in zones:
+            zone_name = zone.zone_name
 
-            # Only add the day to the schedule if there are slots available
-            if delivery_slots:
-                weekly_schedule[day] = delivery_slots
+            # Fetch the Delivery Zone Schedule for the current zone
+            try:
+                schedule_doc = frappe.get_doc("Delivery Zone Schedule", {"delivery_zone": zone_name})
 
-        return {"zip_code": zip_code, "zone": zone_name, "weekly_schedule": weekly_schedule}
+                # Initialize a dictionary to hold the weekly schedule for the current zone
+                weekly_schedule = {}
+
+                # Iterate through each weekday and fetch the delivery slots
+                for day, field_name in weekdays.items():
+                    delivery_slots = [
+                        {"start_time": str(slot.start_time), "end_time": str(slot.end_time)}
+                        for slot in getattr(schedule_doc, field_name, [])
+                    ]
+
+                    # Only add the day to the schedule if there are slots available
+                    if delivery_slots:
+                        weekly_schedule[day] = delivery_slots
+
+                # Add the zone's weekly schedule to the overall schedules dictionary
+                if weekly_schedule:
+                    all_zone_schedules[zone_name] = {"weekly_schedule": weekly_schedule}
+
+            except frappe.DoesNotExistError:
+                frappe.log_error(message=f"Schedule not found for zone: {zone_name}", title="Schedule Not Found")
+                continue
+
+        # Return the appropriate result
+        if zip_code:
+            return {"zones": {zones[0].zone_name: all_zone_schedules.get(zones[0].zone_name)}}
+        else:
+            return {"zones": all_zone_schedules}
 
     except frappe.exceptions.ValidationError as e:
         frappe.log_error(message=str(e), title="Validation Error in get_weekly_schedule_by_zip")
         return {"error": str(e)}
 
     except frappe.exceptions.DoesNotExistError as e:
-        frappe.log_error(message=str(e), title="Zone Not Found")
+        frappe.log_error(message=str(e), title="Zone or Schedule Not Found")
         return {"error": str(e)}
 
     except Exception as e:
         frappe.log_error(message=str(e), title="Unexpected Error in get_weekly_schedule_by_zip")
         return {"error": "An unexpected error occurred. Please try again later."}
+
 
 
 @frappe.whitelist(allow_guest=True)
@@ -389,6 +417,7 @@ def get_stock_availability(item):
     # item.update({
     #     "is_stock_item": False
     # })
+
     item.is_in_stock = get_stock_availability_from_template(item.item_code, item.warehouse)
     # # warehouse = item_details.get("website_warehouse")
     # is_stock_item = frappe.get_cached_value("Item", item_details.item_code, "is_stock_item")
@@ -1076,3 +1105,29 @@ def get_wishlist():
         return {"error": "An error occurred while retrieving the wishlist"}
 
 
+@frappe.whitelist(allow_guest=True)
+def generate_session_id():
+    # Get client IP address
+    client_ip = frappe.get_request_header('X-Forwarded-For') or frappe.get_request_header('X-Real-IP') or frappe.local.request.remote_addr
+    
+    # Get user agent (browser and device info)
+    user_agent = frappe.get_request_header('User-Agent')
+    
+    # Combine IP address and user-agent into a unique string
+    unique_string = f"{client_ip}-{user_agent}-{uuid.uuid4()}"
+    
+    # Hash the unique string to generate session ID
+    session_id = hashlib.sha256(unique_string.encode()).hexdigest()
+
+    frappe.local.cookie_manager = CookieManager()
+    frappe.local.cookie_manager.set_cookie('session_id', session_id, max_age=365 * 24 * 60 * 60, httponly=True, secure=False)
+    
+    # # Set session_id in response header as a cookie
+    # frappe.set_cookie('session_id', session_id, max_age=365 * 24 * 60 * 60, httponly=True, secure=False)
+    
+    # Return the session ID as a response as well, if needed for logging
+    return {
+        'session_id': session_id,
+        'ip_address': client_ip,
+        'user_agent': user_agent
+    }
