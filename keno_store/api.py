@@ -355,13 +355,41 @@ def get_website_item_details(item_code):
             # "image": website_item.website_image,
             "web_long_description": website_item.web_long_description,
             "is_in_stock": frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty") > 0,
+            "uom": website_item.stock_uom,
         }
         # get_stock_availability(item_details, website_item.get("website_warehouse"));
         
 
         # Get stock quantity
-        stock_qty = frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty")
+        stock_qty = frappe.db.get_value("Bin", {"item_code": item_code}, "projected_qty ")
         item_details["stock_qty"] = stock_qty if stock_qty else 0
+
+        try:
+            # Fetch product information including pricing details
+            product_info = get_product_info_for_website(item_code, skip_quotation_creation=True).get(
+                "product_info"
+            )
+            if product_info and product_info["price"]:
+                item_details.update({
+                    "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                    "formatted_price": product_info["price"].get("formatted_price"),
+                    "price_list_rate": product_info["price"].get("price_list_rate")
+                })
+            if product_info["price"].get("discount_percent"):
+                item_details.update({
+                    "discount_percent" : flt(product_info["price"].discount_percent)
+                })
+            if item_details.formatted_mrp:
+                item_details.update({
+                    "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
+                        "formatted_discount_rate"
+                    )
+                })
+        except Exception as e:
+            frappe.log_error(message=f"Error fetching product info for item {item_code}: {str(e)}", 
+                                title="Get New Website Items Error")
+            # You may also choose to skip this item or return a default value instead
+            
 
         # Get item price from Item Price doctype
         item_price = frappe.db.get_value("Item Price", {"item_code": item_code, "selling": 1}, ["price_list_rate", "currency"], as_dict=True)
@@ -391,6 +419,11 @@ def get_website_item_details(item_code):
         else : 
             image_list = [{"image": website_item.website_image}]
         item_details["image_list"] = image_list
+
+        # Fetch website specifications
+        specifications = frappe.get_all("Item Website Specification", filters={"parent": website_item.name}, 
+                                        fields=["label", "description"], order_by="idx asc")
+        item_details["specifications"] = [{"label": spec.label, "value": spec.value} for spec in specifications]
 
         logger.debug(item_details)
 
@@ -1131,3 +1164,21 @@ def generate_session_id():
         'ip_address': client_ip,
         'user_agent': user_agent
     }
+
+
+@frappe.whitelist(allow_guest=True)
+def download_app():
+    user_agent = frappe.request.headers.get('User-Agent')
+
+    if 'Android' in user_agent:
+        # Redirect to Google Play Store
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = "https://play.google.com/store/apps/details?id=com.amazon.mShop.android.shopping"
+    elif 'iPhone' in user_agent or 'iPad' in user_agent:
+        # Redirect to Apple App Store
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = "https://apps.apple.com/us/app/amazon-shopping/id297606951"
+    else:
+        # Fallback URL (e.g., your website or app info page)
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = "https://keno.today"
