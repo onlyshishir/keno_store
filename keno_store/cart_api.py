@@ -57,6 +57,8 @@ def get_cart_quotation(doc=None, session_id=None):
                 )
                 if quotation:
                     quotation = frappe.get_doc("Quotation", quotation[0].name)
+                else:
+                    frappe.throw("Cart is emplty!!")
             else:
                 quotation = _get_cart_quotation(party)
             
