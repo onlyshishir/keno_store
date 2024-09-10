@@ -2,7 +2,7 @@ import hashlib
 import uuid
 import frappe
 from frappe import _
-from frappe.auth import CookieManager
+from frappe.auth import CookieManager, validate_auth_via_api_keys
 from frappe.utils import cint
 from frappe.utils import flt
 import frappe.utils
@@ -791,7 +791,8 @@ def get_limited_time_offers(limit=10, price_list="Standard Selling", days=7):
         dict: A dictionary containing the list of hot deal website items or an error message.
     """
     today_date = frappe.utils.nowdate()
-    expiring_soon_date = frappe.utils.add_days(today_date,7)
+    expiring_soon_date = frappe.utils.add_days(today_date, 7)
+
     try:
         # Fetch active pricing rules
         active_pricing_rules = frappe.get_all(
@@ -803,26 +804,28 @@ def get_limited_time_offers(limit=10, price_list="Standard Selling", days=7):
                 "valid_upto": ["between", [today_date, expiring_soon_date]],
                 "discount_percentage": [">", 0]
             },
-            fields=["name"]
+            fields=["name", "valid_upto"]
         )
 
         # If no active pricing rules are found, return an empty list
         if not active_pricing_rules:
             return {"items": []}
 
+        # Map pricing rule valid_upto to item codes
+        pricing_rule_map = {rule["name"]: rule["valid_upto"] for rule in active_pricing_rules}
+        pricing_rule_names = list(pricing_rule_map.keys())
+
         # Fetch items linked to these pricing rules
-        pricing_rule_names = [rule["name"] for rule in active_pricing_rules]
         items = frappe.get_all(
             "Pricing Rule Item Code",
             filters={"parent": ["in", pricing_rule_names]},
-            fields=["item_code"]
+            fields=["item_code", "parent"]
         )
-        logger.debug(items)
 
         item_codes = [item["item_code"] for item in items]
 
         # Step 2: Fetch Website Items linked to these item codes
-        items = frappe.get_all(
+        website_items = frappe.get_all(
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
@@ -848,8 +851,8 @@ def get_limited_time_offers(limit=10, price_list="Standard Selling", days=7):
             limit=limit
         )
 
-        # Step 3: Enhance each item with pricing and rating details
-        for item in items:
+        # Step 3: Enhance each item with pricing, rating, and valid_upto details
+        for item in website_items:
             try:
                 # Fetch product information including pricing details
                 product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get(
@@ -871,10 +874,14 @@ def get_limited_time_offers(limit=10, price_list="Standard Selling", days=7):
                             "formatted_discount_rate"
                         )
                     })
+
+                # Map valid_upto from pricing rule to the item
+                pricing_rule = next((p for p in items if p["item_code"] == item["item_code"]), None)
+                if pricing_rule:
+                    item["valid_upto"] = pricing_rule_map.get(pricing_rule["parent"], None)
             except Exception as e:
                 frappe.log_error(message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}", 
                                  title="Get New Website Items Error")
-                # You may also choose to skip this item or return a default value instead
                 continue
 
             try:
@@ -891,7 +898,7 @@ def get_limited_time_offers(limit=10, price_list="Standard Selling", days=7):
                                  title="Get New Website Items Error")
                 item["rating"] = 0  # Default value if rating fetch fails
 
-        return {"items": items}
+        return {"items": website_items}
 
     except Exception as e:
         frappe.log_error(f"Failed to get hot deals: {str(e)}")
@@ -1003,9 +1010,143 @@ def get_special_discount_items(limit=10):
         return {"exc": "Something went wrong!"}
     
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
+def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
+    """Fetch items based on a Pricing Rule that applies to item_code, item_group, or brand."""
+    if not pricing_rule_name:
+        frappe.throw(("Pricing Rule name is required"))
+
+    try:
+        limit = int(limit) if limit else None
+
+        # Fetch Pricing Rule details
+        pricing_rules = frappe.get_all("Pricing Rule", filters={"title": pricing_rule_name, "disable": 0})
+        if not pricing_rules:
+            frappe.throw(("Pricing Rule not found"))
+
+        pricing_rule = frappe.get_doc("Pricing Rule", pricing_rules[0].name)
+
+        filters = {}
+        items = []
+
+        # Determine rule application
+        if pricing_rule.apply_on == "Item Code":
+            # Fetch items associated with the Pricing Rule directly
+            items = frappe.get_all("Pricing Rule Item Code", filters={"parent": pricing_rule.name}, fields=["item_code"])
+
+        elif pricing_rule.apply_on == "Item Group":
+            # Fetch items in the specified item group
+            filters["item_group"] = pricing_rule.item_group
+
+        elif pricing_rule.apply_on == "Brand":
+            # Fetch items in the specified brand
+            filters["brand"] = pricing_rule.brand
+
+        else:
+            frappe.throw(_("Unsupported rule_based_on value"))
+
+        # If applicable, fetch items based on item group or brand
+        if filters:
+            items = frappe.get_all("Item", filters=filters, fields=["item_code"])
+
+        item_codes = [item["item_code"] for item in items]
+
+        # Step 2: Fetch Website Items linked to these item codes
+        website_items = frappe.get_all(
+            "Website Item",
+            filters={
+                "item_code": ["in", item_codes],
+                "published": 1  # Ensure only published items are fetched
+            },
+            fields=[
+                "web_item_name", 
+                "name", 
+                "item_name", 
+                "item_code", 
+                "website_image", 
+                "variant_of", 
+                "has_variants", 
+                "item_group", 
+                "web_long_description", 
+                "short_description", 
+                "route", 
+                "website_warehouse", 
+                "ranking", 
+                "on_backorder"
+            ],
+            order_by="creation desc",  # Order by creation date to get the newest items
+            limit=limit
+        )
+
+        # Step 3: Enhance each item with pricing, rating, and valid_upto details
+        for item in website_items:
+            try:
+                # Fetch product information including pricing details
+                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get(
+                    "product_info"
+                )
+                if product_info and product_info["price"]:
+                    item.update({
+                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate")
+                    })
+
+                if product_info["price"].get("discount_percent"):
+                    item.update({
+                        "discount_percent": flt(product_info["price"].get("discount_percent"))
+                    })
+
+                if item.get("formatted_mrp"):
+                    item.update({
+                        "discount": product_info["price"].get("formatted_discount_percent") or 
+                                    product_info["price"].get("formatted_discount_rate")
+                    })
+
+                # Map valid_upto from pricing rule to the item
+                pricing_rule_entry = next((p for p in items if p["item_code"] == item["item_code"]), None)
+                if pricing_rule_entry:
+                    item["valid_upto"] = pricing_rule.valid_upto
+
+            except Exception as e:
+                frappe.log_error(message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}", 
+                                 title="Get New Website Items Error")
+                continue
+
+            try:
+                # Fetch item rating
+                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                if ratings:
+                    total_rating = sum([r["rating"] for r in ratings])
+                    average_rating = total_rating / len(ratings)
+                    item["rating"] = round(average_rating, 1)
+                else:
+                    item["rating"] = 0
+            except Exception as e:
+                frappe.log_error(message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}", 
+                                 title="Get New Website Items Error")
+                item["rating"] = 0  # Default value if rating fetch fails
+
+        frappe.response["data"] = {"items": website_items}
+
+    except frappe.DoesNotExistError:
+        frappe.response["data"] = {"message": "Failed to fetch items", "error": str(e)}
+
+    except frappe.ValidationError as e:
+        frappe.log_error(("Validation error: {0}".format(str(e))))
+        frappe.response["data"] = {"message": "Validation error occurred", "error": str(e)}
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Unexpected Error in get_items_by_pricing_rule")
+        frappe.response["data"] = {"message": "An unexpected error occurred. Please try again later.", "error": str(e)}
+
+
+@frappe.whitelist(allow_guest=True)
 def add_to_wishlist(item_code):
     try:
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        if frappe.local.session.user == None or frappe.session.user == "Guest":
+            frappe.throw("Please log in to access this feature.") 
         # Check if item already exists in the wishlist
         if frappe.db.exists("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}):
             return {"message": "Item already in wishlist"}
@@ -1056,20 +1197,23 @@ def add_to_wishlist(item_code):
         if hasattr(frappe.local, "cookie_manager"):
             frappe.local.cookie_manager.set_cookie("wish_count", str(len(wishlist.items)))
 
-        return {"message": "Item added to wishlist successfully"}
+        frappe.response["data"] = {"message": "Item added to wishlist successfully"}
 
     except frappe.ValidationError as e:
         frappe.log_error(f"Error adding item to wishlist: {e}")
-        return {"message": "Failed to add item to wishlist", "error": str(e)}
+        frappe.response["data"] = {"message": "Failed to add item to wishlist", "error": str(e)}
 
     except Exception as e:
         frappe.log_error(f"Unexpected error: {e}")
-        return {"message": "An unexpected error occurred", "error": str(e)}
+        frappe.response["data"] = {"message": "An unexpected error occurred", "error": str(e)}
     
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def remove_from_wishlist(item_code):
     try:
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        if frappe.local.session.user == None or frappe.session.user == "Guest":
+            frappe.throw("Please log in to access this feature.") 
         # Check if the item exists in the user's wishlist
         if frappe.db.exists("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}):
             # Delete the wishlist item
@@ -1083,26 +1227,29 @@ def remove_from_wishlist(item_code):
             if hasattr(frappe.local, "cookie_manager"):
                 frappe.local.cookie_manager.set_cookie("wish_count", str(len(wishlist_items)))
 
-            return {"message": "Item removed from wishlist", "wish_count": len(wishlist_items)}
+            frappe.response["data"] = {"message": "Item removed from wishlist", "wish_count": len(wishlist_items)}
         else:
-            return {"message": "Item not found in wishlist", "wish_count": 0}
+            frappe.response["data"] = {"message": "Item not found in wishlist", "wish_count": 0}
 
     except frappe.DoesNotExistError:
         frappe.log_error(f"Wishlist Item with item_code {item_code} not found for user {frappe.session.user}")
-        return {"error": "Item does not exist in the wishlist"}
+        frappe.response["data"] = {"error": "Item does not exist in the wishlist"}
 
     except frappe.ValidationError as e:
         frappe.log_error(f"Validation error while removing item from wishlist: {e}")
-        return {"error": "There was a validation error"}
+        frappe.response["data"] = {"message": "There was a validation error", "error": str(e)}
 
     except Exception as e:
         frappe.log_error(f"Unexpected error while removing item from wishlist: {str(e)}")
-        return {"error": "An unexpected error occurred"}
+        frappe.response["data"] = {"message": "An unexpected error occurred", "error": str(e)}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_wishlist():
     try:
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        if frappe.local.session.user == None or frappe.session.user == "Guest":
+            frappe.throw("Please log in to access this feature.")
         # Fetch all wishlist items for the current user
         wishlist_items = frappe.get_all(
             "Wishlist Item",
@@ -1131,11 +1278,60 @@ def get_wishlist():
                     )
                 })
 
-        return wishlist_items
+        frappe.response["data"] = {
+                    "message": "Wishlist items fetched successfully.",
+                    "wishlist_items": wishlist_items
+                }
+    
+    except frappe.ValidationError as e:
+        frappe.log_error(f"Validation error while retrieving wishlist for user: {e}")
+        frappe.response["data"] = {"message": "There was a validation error", "error": str(e)}
 
     except Exception as e:
         frappe.log_error(f"Error retrieving wishlist for user {frappe.session.user}: {str(e)}")
-        return {"error": "An error occurred while retrieving the wishlist"}
+        frappe.response["data"] = {"message": "An error occurred while retrieving the wishlist", "error": str(e)}
+    
+
+@frappe.whitelist(allow_guest=True)
+def get_item_groups(limit=None):
+    """
+    API to fetch all active Item Groups in ERPNext, or limit the number of results.
+    
+    Args:
+        limit (int, optional): The number of item groups to return. Defaults to None for all.
+        
+    Returns:
+        dict: A dictionary containing the list of item groups.
+    """
+    try:
+        # Set default limit to None to fetch all if no limit is specified
+        limit = int(limit) if limit else None
+
+        # Fetch active Item Groups with optional limit
+        item_groups = frappe.get_all(
+            "Item Group",
+            filters={"show_in_website": 1},  # Filter only active groups shown on website
+            fields=["name", "parent_item_group", "image", "is_group"],
+            order_by="weightage desc",
+            limit=limit  # Use limit only if provided, otherwise fetch all
+        )
+
+        if not item_groups:
+            frappe.response["data"] = {
+                "message": "No item groups found.",
+                "item_groups": []
+            }
+        else:
+            frappe.response["data"] = {
+                "message": "Item groups fetched successfully.",
+                "item_groups": item_groups
+            }
+
+    except Exception as e:
+        frappe.log_error(f"Error fetching item groups: {str(e)}")
+        frappe.response["data"] = {
+            "error": "An error occurred while fetching item groups."
+        }
 
 
 @frappe.whitelist(allow_guest=True)
