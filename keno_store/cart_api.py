@@ -36,27 +36,61 @@ def set_cart_count(quotation=None):
             frappe.local.cookie_manager.set_cookie("cart_count", cart_count)
 
 
-@frappe.whitelist()
-def get_cart_quotation(doc=None):
-    party = get_party()
+@frappe.whitelist(allow_guest=True)
+def get_cart_quotation(doc=None, session_id=None):
+    try:
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
 
-    if not doc:
-        quotation = _get_cart_quotation(party)
-        doc = quotation
-        set_cart_count(quotation)
+        # Check if the user is logged in
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            if session_id is None:
+                frappe.throw("Should include session id for Guest user.")
+        
+        # Get the party (customer)
+        party = get_party()
 
-    addresses = get_address_docs(party=party)
+        # Fetch or create the quotation (cart)
+        if not doc:
+            if frappe.local.session.user is None or frappe.session.user == "Guest":
+                quotation = frappe.get_all(
+                    "Quotation", filters={"custom_session_id": session_id, "docstatus": 0}, limit=1
+                )
+                if quotation:
+                    quotation = frappe.get_doc("Quotation", quotation[0].name)
+            else:
+                quotation = _get_cart_quotation(party)
+            
+            doc = quotation
+            set_cart_count(quotation)
 
-    if not doc.customer_address and addresses:
-        update_cart_address("billing", addresses[0].name)
+        # Get addresses for the party
+        addresses = get_address_docs(party=party)
 
-    return {
-        "doc": decorate_quotation_doc(doc),
-        "shipping_addresses": get_shipping_addresses(party),
-        "billing_addresses": get_billing_addresses(party),
-        "shipping_rules": get_applicable_shipping_rules(party),
-        "cart_settings": frappe.get_cached_doc("Webshop Settings"),
-    }
+        # Update billing address if none exists and addresses are available
+        if not doc.customer_address and addresses:
+            update_cart_address("billing", addresses[0].name)
+
+        # Return the cart quotation and related data
+        return {
+            "doc": decorate_quotation_doc(doc),
+            "shipping_addresses": get_shipping_addresses(party),
+            "billing_addresses": get_billing_addresses(party),
+            "shipping_rules": get_applicable_shipping_rules(party),
+            # "cart_settings": frappe.get_cached_doc("Webshop Settings"),
+        }
+
+    except frappe.ValidationError as e:
+        # Handle specific validation errors
+        frappe.response["data"] = {"message": "There was a validation error", "error": str(e)}
+
+    except frappe.DoesNotExistError:
+        # Handle case where a document doesn't exist
+        frappe.response["data"] = {"message": "Requested document does not exist"}
+
+    except Exception as e:
+        # General exception handling
+        frappe.log_error(frappe.get_traceback(), _("Error in get_cart_quotation"))
+        frappe.response["data"] = {"message": "An unexpected error occurred. Please try again later.", "error": str(e)}
 
 
 @frappe.whitelist()
