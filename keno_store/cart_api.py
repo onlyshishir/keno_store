@@ -1,6 +1,7 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
+from http import HTTPStatus
 import frappe
 from frappe.auth import validate_auth_via_api_keys
 import stripe
@@ -39,7 +40,7 @@ def set_cart_count(quotation=None):
 @frappe.whitelist(allow_guest=True)
 def get_cart_quotation(doc=None, session_id=None):
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
 
         # Check if the user is logged in
         if frappe.local.session.user is None or frappe.session.user == "Guest":
@@ -71,15 +72,46 @@ def get_cart_quotation(doc=None, session_id=None):
         # Update billing address if none exists and addresses are available
         if not doc.customer_address and addresses:
             update_cart_address("billing", addresses[0].name)
-
-        # Return the cart quotation and related data
-        return {
-            "doc": decorate_quotation_doc(doc),
-            "shipping_addresses": get_shipping_addresses(party),
-            "billing_addresses": get_billing_addresses(party),
-            "shipping_rules": get_applicable_shipping_rules(party),
-            # "cart_settings": frappe.get_cached_doc("Webshop Settings"),
+        cart = {
+            "session_id": quotation.custom_session_id,
+            "contact_name": quotation.contact_display,
+            "contact_mobile": quotation.contact_mobile,
+            "contact_email": quotation.contact_email,
+            "grand_total": quotation.grand_total,
+            "rounding_adjustment": quotation.rounding_adjustment,
+            "rounded_total": quotation.rounded_total,
+            "in_words": quotation.in_words,
+            "items": [
+                {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "quantity": item.qty,
+                    "base_price": item.price_list_rate,
+                    "price": item.rate,
+                    "amount": item.amount
+                }
+                for item in quotation.items
+            ],
+            "taxes": [
+                {
+                    "tax_type": tax.description,
+                    "tax_rate": tax.rate,
+                    "tax_amount": tax.tax_amount
+                }
+                for tax in quotation.taxes
+            ],
+            "shipping_address": get_shipping_addresses(party)[0],
         }
+
+        # # Return the cart quotation and related data
+        # return {
+        #     "doc": decorate_quotation_doc(doc),
+        #     "shipping_addresses": get_shipping_addresses(party),
+        #     "billing_addresses": get_billing_addresses(party),
+        #     "shipping_rules": get_applicable_shipping_rules(party),
+        #     # "cart_settings": frappe.get_cached_doc("Webshop Settings"),
+        # }
+        frappe.response["data"] = {"status": "success", "cart": cart}
 
     except frappe.ValidationError as e:
         # Handle specific validation errors
@@ -102,9 +134,12 @@ def get_shipping_addresses(party=None):
     addresses = get_address_docs(party=party)
     return [
         {
-            "name": address.name,
-            "title": address.address_title,
-            "display": address.display,
+            "address_line1": address.address_line1,
+            "address_line2": address.address_line2,
+            "city": address.city,
+            "state": address.state,
+            "pincode": address.pincode,
+            "country": address.country
         }
         for address in addresses
         if address.address_type == "Shipping"
@@ -118,9 +153,12 @@ def get_billing_addresses(party=None):
     addresses = get_address_docs(party=party)
     return [
         {
-            "name": address.name,
-            "title": address.address_title,
-            "display": address.display,
+            "address_line1": address.address_line1,
+            "address_line2": address.address_line2,
+            "city": address.city,
+            "state": address.state,
+            "pincode": address.pincode,
+            "country": address.country
         }
         for address in addresses
         if address.address_type == "Billing"
@@ -233,8 +271,8 @@ def request_for_quotation():
 
 
 @frappe.whitelist(True)
-def update_cart(item_code, qty, additional_notes=None, with_items=False):
-    validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+def update_cart(item_code, qty, additional_notes=None):
+    validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
     usr = frappe.local.session.user
     quotation = _get_cart_quotation()
 
@@ -289,21 +327,8 @@ def update_cart(item_code, qty, additional_notes=None, with_items=False):
 
     set_cart_count(quotation)
 
-    if cint(with_items):
-        context = get_cart_quotation(quotation)
-        return {
-            "items": frappe.render_template(
-                "templates/includes/cart/cart_items.html", context
-            ),
-            "total": frappe.render_template(
-                "templates/includes/cart/cart_items_total.html", context
-            ),
-            "taxes_and_totals": frappe.render_template(
-                "templates/includes/cart/cart_payment_summary.html", context
-            ),
-        }
-    else:
-        return {"name": quotation.name}
+    frappe.local.response["http_status_code"] = HTTPStatus.OK
+    frappe.response["data"] = {"message": "Successfully updated the user's cart"}
 
 
 @frappe.whitelist()
@@ -799,7 +824,7 @@ def get_applicable_shipping_rules(party=None, quotation=None):
     if shipping_rules:
         rule_label_map = frappe.db.get_values("Shipping Rule", shipping_rules, "label")
         # we need this in sorted order as per the position of the rule in the settings page
-        return [[rule, rule] for rule in shipping_rules]
+        return [rule for rule in shipping_rules]
 
 
 def get_shipping_rules(quotation=None, cart_settings=None):
@@ -851,7 +876,7 @@ def show_terms(doc):
 @frappe.whitelist(allow_guest=True)
 def apply_coupon_code(applied_code, session_id=None, applied_referral_sales_partner=None):
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
         
         # Check if the user is logged in
         if frappe.local.session.user is None or frappe.session.user == "Guest":

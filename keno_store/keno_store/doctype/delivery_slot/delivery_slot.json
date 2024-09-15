@@ -1,11 +1,13 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "format:{day}: {start_time}-{end_time}-{#####}",
  "creation": "2024-08-31 18:14:00.371722",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "day",
   "start_time",
   "end_time"
  ],
@@ -20,17 +22,27 @@
   {
    "fieldname": "end_time",
    "fieldtype": "Time",
+   "in_list_view": 1,
    "label": "End Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "day",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Day",
+   "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday",
    "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2024-08-31 18:14:40.044058",
+ "modified": "2024-09-14 01:54:03.424116",
  "modified_by": "Administrator",
  "module": "Keno Store",
  "name": "Delivery Slot",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",

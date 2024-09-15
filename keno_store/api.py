@@ -1144,7 +1144,7 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
 @frappe.whitelist(allow_guest=True)
 def add_to_wishlist(item_code):
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
         if frappe.local.session.user == None or frappe.session.user == "Guest":
             frappe.throw("Please log in to access this feature.") 
         # Check if item already exists in the wishlist
@@ -1211,7 +1211,7 @@ def add_to_wishlist(item_code):
 @frappe.whitelist(allow_guest=True)
 def remove_from_wishlist(item_code):
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
         if frappe.local.session.user == None or frappe.session.user == "Guest":
             frappe.throw("Please log in to access this feature.") 
         # Check if the item exists in the user's wishlist
@@ -1247,8 +1247,9 @@ def remove_from_wishlist(item_code):
 @frappe.whitelist(allow_guest=True)
 def get_wishlist():
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
-        if frappe.local.session.user == None or frappe.session.user == "Guest":
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
+        # validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
+        if frappe.session.user == None or frappe.session.user == "Guest":
             frappe.throw("Please log in to access this feature.")
         # Fetch all wishlist items for the current user
         wishlist_items = frappe.get_all(

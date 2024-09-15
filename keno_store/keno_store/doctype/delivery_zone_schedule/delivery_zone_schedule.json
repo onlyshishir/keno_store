@@ -7,12 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "delivery_zone",
-  "monday_slots",
-  "tuesday_slots",
-  "wednesday_slots",
-  "thursday_slots",
-  "friday_slots",
-  "satusday_slots"
+  "delivery_slots"
  ],
  "fields": [
   {
@@ -26,45 +21,15 @@
    "unique": 1
   },
   {
-   "fieldname": "monday_slots",
+   "fieldname": "delivery_slots",
    "fieldtype": "Table",
-   "label": "Monday Slots",
-   "options": "Delivery Slot"
-  },
-  {
-   "fieldname": "tuesday_slots",
-   "fieldtype": "Table",
-   "label": "Tuesday Slots",
-   "options": "Delivery Slot"
-  },
-  {
-   "fieldname": "wednesday_slots",
-   "fieldtype": "Table",
-   "label": "Wednesday Slots ",
-   "options": "Delivery Slot"
-  },
-  {
-   "fieldname": "thursday_slots",
-   "fieldtype": "Table",
-   "label": "Thursday Slots",
-   "options": "Delivery Slot"
-  },
-  {
-   "fieldname": "friday_slots",
-   "fieldtype": "Table",
-   "label": "Friday Slots",
-   "options": "Delivery Slot"
-  },
-  {
-   "fieldname": "satusday_slots",
-   "fieldtype": "Table",
-   "label": "Saturday Slots",
+   "label": "Delivery Slots",
    "options": "Delivery Slot"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-08-31 15:05:58.972118",
+ "modified": "2024-09-14 01:33:47.517360",
  "modified_by": "Administrator",
  "module": "Keno Store",
  "name": "Delivery Zone Schedule",
