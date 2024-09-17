@@ -106,7 +106,8 @@ def get_cart_quotation(doc=None, session_id=None):
                 }
                 for tax in quotation.taxes
             ],
-            "shipping_address": get_shipping_addresses(party)[0],
+            # "shipping_address": get_shipping_addresses(party)[0],
+            "shipping_address": get_shipping_addresses(party)[0] if get_shipping_addresses(party) else None,
         }
 
         # # Return the cart quotation and related data
@@ -1664,6 +1665,8 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
 
         # Update the Sales Invoice status to "Paid"
         frappe.db.set_value("Sales Invoice", sales_invoice.name, "status", "Paid")
+
+        frappe.db.set_value("Delivery Note", delivery_note.name, "status", "Paid")
 
         frappe.db.commit()
 
