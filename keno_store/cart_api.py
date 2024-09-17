@@ -95,6 +95,7 @@ def get_cart_quotation(doc=None, session_id=None):
                     "base_price": item.price_list_rate,
                     "price": item.rate,
                     "amount": item.amount,
+                    "image": item.image
                 }
                 for item in quotation.items
             ],
@@ -107,7 +108,11 @@ def get_cart_quotation(doc=None, session_id=None):
                 for tax in quotation.taxes
             ],
             # "shipping_address": get_shipping_addresses(party)[0],
-            "shipping_address": get_shipping_addresses(party)[0] if get_shipping_addresses(party) else None,
+            "shipping_address": (
+                get_shipping_addresses(party)[0]
+                if get_shipping_addresses(party)
+                else None
+            ),
         }
 
         # # Return the cart quotation and related data
@@ -239,7 +244,9 @@ def place_order(order_info, session_id=None):
                 else frappe.new_doc("Address")
             )
             if address_doc.address_title is None:
-                address_doc.address_title = quotation.contact_display + " - Primary Address"
+                address_doc.address_title = (
+                    quotation.contact_display + " - Primary Address"
+                )
             address_doc.address_line1 = address.get("address_line1")
             address_doc.address_line2 = address.get("address_line2")
             address_doc.city = address.get("city")
@@ -285,7 +292,9 @@ def place_order(order_info, session_id=None):
                 item.warehouse = frappe.db.get_value(
                     "Website Item", {"item_code": item.item_code}, "website_warehouse"
                 )
-                is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+                is_stock_item = frappe.db.get_value(
+                    "Item", item.item_code, "is_stock_item"
+                )
 
                 if is_stock_item:
                     item_stock = get_web_item_qty_in_stock(
@@ -307,8 +316,8 @@ def place_order(order_info, session_id=None):
         # Create a Stripe PaymentIntent
         stripe_keys = get_stripe_keys()
         ip_address = frappe.request.headers.get(
-                "X-Forwarded-For"
-            ) or frappe.request.headers.get("Remote-Addr")
+            "X-Forwarded-For"
+        ) or frappe.request.headers.get("Remote-Addr")
         amount_in_cents = int(float(sales_order.rounded_total) * 100)
         intent = stripe.PaymentIntent.create(
             amount=amount_in_cents,
@@ -325,7 +334,7 @@ def place_order(order_info, session_id=None):
                 "enabled": True,
                 "allow_redirects": "never",  # Prevent redirects
             },
-            description=quotation.name +" cart checkout",
+            description=quotation.name + " cart checkout",
             receipt_email=order_info["contact_email"],  # Include customer email
             shipping={
                 "name": order_info["contact_name"],  # Include customer name in shipping
@@ -344,8 +353,12 @@ def place_order(order_info, session_id=None):
             frappe.local.cookie_manager.delete_cookie("cart_count")
 
         frappe.local.response["http_status_code"] = HTTPStatus.OK
-        frappe.response["data"] = {"status": "success", "sales_order": sales_order.name, "client_secret": intent["client_secret"]}
-    
+        frappe.response["data"] = {
+            "status": "success",
+            "sales_order": sales_order.name,
+            "client_secret": intent["client_secret"],
+        }
+
     except Exception as e:
         # Rollback the transaction in case of any error
         frappe.db.rollback()
@@ -1489,7 +1502,7 @@ def process_order_after_payment_success(sales_order_name, payment_intent):
         sales_invoice.submit()
 
         # Create Delivery Note for the Sales Order
-        delivery_note = create_delivery_note(sales_order)
+        delivery_note = create_delivery_note(sales_order, sales_invoice)
 
         # Submit the Delivery Note
         delivery_note.submit()
@@ -1514,67 +1527,95 @@ def process_order_after_payment_success(sales_order_name, payment_intent):
 
 
 def create_sales_invoice(sales_order):
-    sales_invoice = frappe.get_doc({
-        "doctype": "Sales Invoice",
-        "customer": sales_order.customer,
-        "due_date": frappe.utils.nowdate(),
-        "company": sales_order.company,
-        "items": [{
-            "item_code": item.item_code,
-            "qty": item.qty,
-            "rate": item.rate,
-            "sales_order": sales_order.name,
-            "warehouse": item.warehouse
-        } for item in sales_order.items],
-        "debit_to": frappe.db.get_value("Company", sales_order.company, "default_receivable_account"),
-        "is_pos": 0
-    })
+    sales_invoice = frappe.get_doc(
+        {
+            "doctype": "Sales Invoice",
+            "customer": sales_order.customer,
+            "due_date": frappe.utils.nowdate(),
+            "company": sales_order.company,
+            "items": [
+                {
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "rate": item.rate,
+                    "sales_order": sales_order.name,
+                    "warehouse": item.warehouse,
+                }
+                for item in sales_order.items
+            ],
+            "debit_to": frappe.db.get_value(
+                "Company", sales_order.company, "default_receivable_account"
+            ),
+            "is_pos": 0,
+        }
+    )
 
     # Include taxes and other charges from the Sales Order
     if sales_order.get("taxes"):
         for tax in sales_order.taxes:
-            sales_invoice.append("taxes", {
-                "charge_type": tax.charge_type,
-                "account_head": tax.account_head,
-                "description": tax.description,
-                "rate": tax.rate,
-                "tax_amount": tax.tax_amount,
-                "cost_center": tax.cost_center,
-                "included_in_print_rate": tax.included_in_print_rate,
-            })
+            sales_invoice.append(
+                "taxes",
+                {
+                    "charge_type": tax.charge_type,
+                    "account_head": tax.account_head,
+                    "description": tax.description,
+                    "rate": tax.rate,
+                    "tax_amount": tax.tax_amount,
+                    "cost_center": tax.cost_center,
+                    "included_in_print_rate": tax.included_in_print_rate,
+                },
+            )
 
     sales_invoice.flags.ignore_permissions = True
     sales_invoice.insert()
     return sales_invoice
 
 
-def create_delivery_note(sales_order):
-    delivery_note = frappe.get_doc({
-        "doctype": "Delivery Note",
-        "customer": sales_order.customer,
-        "posting_date": frappe.utils.nowdate(),
-        "company": sales_order.company,
-        "items": [{
-            "item_code": item.item_code,
-            "qty": item.qty,
-            "rate": item.rate,
-            "sales_order": sales_order.name,
-            "warehouse": item.warehouse
-        } for item in sales_order.items]
-    })
+def create_delivery_note(sales_order, sales_invoice):
+    delivery_note = frappe.get_doc(
+        {
+            "doctype": "Delivery Note",
+            "customer": sales_order.customer,
+            "posting_date": frappe.utils.nowdate(),
+            "company": sales_order.company,
+            "items": [
+                {
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "rate": item.rate,
+                    "sales_order": sales_order.name,
+                    "warehouse": item.warehouse,
+                }
+                for item in sales_order.items
+            ],
+            "references": [
+                {
+                    "reference_doctype": "Sales Order",  # Link the Sales Invoice
+                    "reference_name": sales_order.name,
+                },
+                {
+                    "reference_doctype": "Sales Invoice",  # Link the Sales Invoice
+                    "reference_name": sales_invoice.name,
+                },
+            ],
+        }
+    )
 
     # Include taxes and other charges from the Sales Order
     if sales_order.get("taxes"):
         for tax in sales_order.taxes:
-            delivery_note.append("taxes", {
-                "charge_type": tax.charge_type,
-                "account_head": tax.account_head,
-                "description": tax.description,
-                "rate": tax.rate,
-                "tax_amount": tax.tax_amount,
-                "cost_center": tax.cost_center,
-                "included_in_print_rate": tax.included_in_print_rate,
-            })
+            delivery_note.append(
+                "taxes",
+                {
+                    "charge_type": tax.charge_type,
+                    "account_head": tax.account_head,
+                    "description": tax.description,
+                    "rate": tax.rate,
+                    "tax_amount": tax.tax_amount,
+                    "cost_center": tax.cost_center,
+                    "included_in_print_rate": tax.included_in_print_rate,
+                },
+            )
 
     delivery_note.flags.ignore_permissions = True
     delivery_note.insert()
@@ -1621,39 +1662,52 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
         # )
 
         # Create a Payment Entry for Sales Invoice
-        payment_entry = frappe.get_doc({
-            "doctype": "Payment Entry",
-            "payment_type": "Receive",
-            "company": sales_invoice.company,
-            "posting_date": frappe.utils.nowdate(),
-            "party_type": "Customer",
-            "party": sales_invoice.customer,
-            "paid_to": (
-                "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
-            ),  # Bank account where the payment is received
-            "paid_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
-            "received_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
-            "reference_no": payment_intent.get("id"),  # Use payment_intent as reference for payment
-            "reference_date": frappe.utils.nowdate(),
-            "references": [{
-                "reference_doctype": "Sales Invoice",
-                "reference_name": sales_invoice.name,
-                "total_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
-                "outstanding_amount": sales_invoice.outstanding_amount,
-                "allocated_amount": sales_invoice.rounded_total or sales_invoice.grand_total
-            },],
-            "remarks": f"Payment received via Stripe for Sales Invoice {sales_invoice.name}"
-        })
+        payment_entry = frappe.get_doc(
+            {
+                "doctype": "Payment Entry",
+                "payment_type": "Receive",
+                "company": sales_invoice.company,
+                "posting_date": frappe.utils.nowdate(),
+                "party_type": "Customer",
+                "party": sales_invoice.customer,
+                "paid_to": (
+                    "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
+                ),  # Bank account where the payment is received
+                "mode_of_payment":"Stripe",
+                "paid_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
+                "received_amount": sales_invoice.rounded_total
+                or sales_invoice.grand_total,
+                "reference_no": payment_intent.get(
+                    "id"
+                ),  # Use payment_intent as reference for payment
+                "reference_date": frappe.utils.nowdate(),
+                "references": [
+                    {
+                        "reference_doctype": "Sales Invoice",
+                        "reference_name": sales_invoice.name,
+                        "total_amount": sales_invoice.rounded_total
+                        or sales_invoice.grand_total,
+                        "outstanding_amount": sales_invoice.outstanding_amount,
+                        "allocated_amount": sales_invoice.rounded_total
+                        or sales_invoice.grand_total,
+                    },
+                ],
+                "remarks": f"Payment received via Stripe for Sales Invoice {sales_invoice.name}",
+            }
+        )
 
         # If there's a linked Delivery Note, add it to the references
         if delivery_note:
-            payment_entry.append("references", {
-                "reference_doctype": "Delivery Note",
-                "reference_name": delivery_note,
-                "total_amount": 0,  # Delivery Note doesn't affect payment directly
-                "outstanding_amount": 0,
-                "allocated_amount": 0
-            })
+            payment_entry.append(
+                "references",
+                {
+                    "reference_doctype": "Delivery Note",
+                    "reference_name": delivery_note,
+                    "total_amount": 0,  # Delivery Note doesn't affect payment directly
+                    "outstanding_amount": 0,
+                    "allocated_amount": 0,
+                },
+            )
 
         # Log the references
         logger.debug(f"References: {payment_entry.references}")
@@ -1666,7 +1720,7 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
         # Update the Sales Invoice status to "Paid"
         frappe.db.set_value("Sales Invoice", sales_invoice.name, "status", "Paid")
 
-        frappe.db.set_value("Delivery Note", delivery_note.name, "status", "Paid")
+        # frappe.db.set_value("Delivery Note", delivery_note.name, "status", "Paid")
 
         frappe.db.commit()
 
