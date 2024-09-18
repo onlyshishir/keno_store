@@ -13,6 +13,7 @@ from frappe.contacts.doctype.contact.contact import get_contact_name
 from frappe.utils import cint, cstr, flt, get_fullname
 import frappe.utils
 from frappe.utils.nestedset import get_root_of
+from datetime import datetime, timedelta
 
 from erpnext.accounts.utils import get_account_name
 from webshop.webshop.doctype.webshop_settings.webshop_settings import (
@@ -258,15 +259,17 @@ def place_order(order_info, session_id=None):
         quotation.shipping_address_name = address_doc
 
         if order_info["delivery_option"]:
-            if order_info["delivery_option"]["delivery_method"]:
+            if order_info["delivery_option"].get("delivery_method"):
                 quotation.custom_delivery_method = order_info["delivery_option"][
                     "delivery_method"
                 ]
-            if order_info["delivery_option"]["delivery_slot"]:
+            if order_info["delivery_option"].get("delivery_slot"):
                 delivery_slot = frappe.get_doc(
                     "Delivery Slot", order_info["delivery_option"]["delivery_slot"]
                 )
-                quotation.delivery_slot = delivery_slot
+                quotation.delivery_slot = delivery_slot.name
+            else:
+                delivery_slot = None
 
         quotation.flags.ignore_permissions = True
         quotation.submit()
@@ -308,10 +311,16 @@ def place_order(order_info, session_id=None):
                                 item_stock.stock_qty, item.item_code
                             )
                         )
+        # Adding Delivery Method, Delivery Date And Delivery Slots data
+        sales_order.custom_delivery_method = quotation.custom_delivery_method
+        if delivery_slot:
+            sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
 
         sales_order.flags.ignore_permissions = True
         sales_order.save()
         sales_order.submit()
+        frappe.db.set_value("Sales Order", sales_order.name, "status", "To Bill")
+        frappe.db.commit()
 
         # Create a Stripe PaymentIntent
         stripe_keys = get_stripe_keys()
@@ -356,6 +365,7 @@ def place_order(order_info, session_id=None):
         frappe.response["data"] = {
             "status": "success",
             "sales_order": sales_order.name,
+            "intent_id": intent["id"],
             "client_secret": intent["client_secret"],
         }
 
@@ -366,6 +376,39 @@ def place_order(order_info, session_id=None):
         frappe.log_error(frappe.get_traceback(), "Place Order Failed")
         # Raise the error to inform the client
         frappe.throw(_("There was an error processing the order: {0}").format(str(e)))
+
+
+def get_date_and_time_slot(delivery_slot):
+    # Extract information from delivery_slot
+    day_name = delivery_slot.day
+    start_time = delivery_slot.start_time
+    end_time = delivery_slot.end_time
+    
+    # Create a list of day names in order, starting from Monday (0) to Sunday (6)
+    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    
+    # Get the current date and today's weekday as an integer (Monday is 0, Sunday is 6)
+    today = datetime.now()
+    today_weekday = today.weekday()
+
+    # Find the index of the desired day in the week
+    try:
+        target_weekday = days_of_week.index(day_name)
+    except ValueError:
+        raise ValueError(f"Invalid day name: {day_name}")
+
+    # Calculate the number of days between today and the target day
+    days_until_target = (target_weekday - today_weekday) % 7
+
+    # Calculate the date of the target day
+    target_date = today + timedelta(days=days_until_target)
+    target_date_str = target_date.strftime('%Y-%m-%d')
+
+    # Combine the date with the start and end time
+    time_slot = f"{start_time} - {end_time}"
+    
+    # Return the formatted string with date and time slot
+    return target_date_str, time_slot
 
 
 @frappe.whitelist()
@@ -1448,67 +1491,37 @@ def stripe_webhook():
 def process_order_after_payment_success(sales_order_name, payment_intent):
     try:
         sales_order = frappe.get_doc("Sales Order", sales_order_name)
-        # cart_settings = frappe.get_cached_doc("Webshop Settings")
-        # quotation.company = cart_settings.company
-
-        # quotation.flags.ignore_permissions = True
-        # quotation.submit()
-
-        # if quotation.quotation_to == "Lead" and quotation.party_name:
-        #     frappe.defaults.set_user_default("company", quotation.company)
-
-        # if not (quotation.shipping_address_name or quotation.customer_address):
-        #     frappe.throw(_("Set Shipping Address or Billing Address"))
-
-        # customer_group = cart_settings.default_customer_group
-
-        # # Create Sales Order
-        # sales_order = frappe.get_doc(
-        #     _make_sales_order(
-        #         quotation.name, customer_group=customer_group, ignore_permissions=True
-        #     )
-        # )
-        # sales_order.payment_schedule = []
-
-        # if not cint(cart_settings.allow_items_not_in_stock):
-        #     for item in sales_order.get("items"):
-        #         item.warehouse = frappe.db.get_value(
-        #             "Website Item", {"item_code": item.item_code}, "website_warehouse"
-        #         )
-        #         is_stock_item = frappe.db.get_value(
-        #             "Item", item.item_code, "is_stock_item"
-        #         )
-
-        #         if is_stock_item:
-        #             item_stock = get_web_item_qty_in_stock(
-        #                 item.item_code, "website_warehouse"
-        #             )
-        #             if not cint(item_stock.in_stock):
-        #                 frappe.throw(_("{0} Not in Stock").format(item.item_code))
-        #             if item.qty > item_stock.stock_qty:
-        #                 frappe.throw(
-        #                     _("Only {0} in Stock for item {1}").format(
-        #                         item_stock.stock_qty, item.item_code
-        #                     )
-        #                 )
-
-        sales_order.flags.ignore_permissions = True
-        sales_order.save()
 
         # Create Sales Invoice for the Sales Order
-        sales_invoice = create_sales_invoice(sales_order)
+        # sales_invoice = create_sales_invoice(sales_order)
 
         # Submit the Sales Invoice
-        sales_invoice.submit()
+        # sales_invoice.submit()
 
         # Create Delivery Note for the Sales Order
-        delivery_note = create_delivery_note(sales_order, sales_invoice)
+        # delivery_note = create_delivery_note(sales_order, sales_invoice)
 
         # Submit the Delivery Note
-        delivery_note.submit()
+        # delivery_note.submit()
+
 
         # Create Payment Entry for the Sales Order
-        create_payment_entry(sales_invoice, payment_intent, delivery_note)
+        create_payment_entry_with_so(sales_order, payment_intent)
+
+        # sales_order.append(
+        #         "references",
+        #         {
+        #             "reference_doctype": "Payment Entry",
+        #             "reference_name": payment_entry.name
+        #         },
+        #     )
+        
+        # sales_order.save()
+
+        # # Adjusting docs status
+        # frappe.db.set_value("Sales Order", sales_order.name, "status", "To Deliver")
+        # # frappe.db.set_value("Delivery Note", delivery_note.name, "status", "To Deliver")
+        # frappe.db.commit()
 
         if hasattr(frappe.local, "cookie_manager"):
             frappe.local.cookie_manager.delete_cookie("cart_count")
@@ -1572,6 +1585,10 @@ def create_sales_invoice(sales_order):
 
 
 def create_delivery_note(sales_order, sales_invoice):
+    # Create a dictionary to map Sales Order Item based on item_code and qty to Sales Invoice Item
+    sales_invoice_item_map = {
+        (inv_item.item_code, inv_item.qty): inv_item.name for inv_item in sales_invoice.items
+    }
     delivery_note = frappe.get_doc(
         {
             "doctype": "Delivery Note",
@@ -1585,19 +1602,13 @@ def create_delivery_note(sales_order, sales_invoice):
                     "rate": item.rate,
                     "sales_order": sales_order.name,
                     "warehouse": item.warehouse,
+                    "against_sales_order": sales_order.name,  # Link each item to Sales Order
+                    "so_detail": item.name,  # Link to the specific Sales Order item row (so_detail)
+                    "against_sales_invoice": sales_invoice.name,  # Link to Sales Invoice
+                    "si_detail": sales_invoice_item_map.get((item.item_code, item.qty))
                 }
                 for item in sales_order.items
-            ],
-            "references": [
-                {
-                    "reference_doctype": "Sales Order",  # Link the Sales Invoice
-                    "reference_name": sales_order.name,
-                },
-                {
-                    "reference_doctype": "Sales Invoice",  # Link the Sales Invoice
-                    "reference_name": sales_invoice.name,
-                },
-            ],
+            ]
         }
     )
 
@@ -1739,6 +1750,70 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
                 "An unexpected error occurred while creating the payment entry. Please check the logs and try again."
             )
         )
+
+
+def create_payment_entry_with_so(sales_order, payment_intent):
+    try:
+        # Prepare values for Payment Entry
+        paid_amount = sales_order.rounded_total or sales_order.grand_total
+        received_amount = paid_amount
+        reference_no = payment_intent.get("id")  # Stripe Payment Intent ID
+        company = sales_order.company
+        customer = sales_order.customer
+
+        # Create a Payment Entry for the Sales Order
+        payment_entry = frappe.get_doc({
+            "doctype": "Payment Entry",
+            "payment_type": "Receive",
+            "company": company,
+            "posting_date": frappe.utils.nowdate(),
+            "party_type": "Customer",
+            "party": customer,
+            "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
+            "mode_of_payment": "Stripe",
+            "paid_amount": paid_amount,
+            "received_amount": received_amount,
+            "reference_no": reference_no,  # Stripe Payment Intent reference
+            "reference_date": frappe.utils.nowdate(),
+            "remarks": f"Payment received via Stripe for Sales Order {sales_order.name}",
+            "references": [
+                {
+                    "reference_doctype": "Sales Order",
+                    "reference_name": sales_order.name,
+                    "total_amount": sales_order.rounded_total or sales_order.grand_total,
+                    "outstanding_amount": 0,
+                    "allocated_amount": sales_order.rounded_total or sales_order.grand_total,
+                }
+            ],
+        })
+
+        # Set exchange rate to avoid currency issues (assuming USD for now)
+        payment_entry.target_exchange_rate = 1
+
+        # Insert and submit the Payment Entry document
+        payment_entry.flags.ignore_permissions = True  # If necessary to bypass permission restrictions
+        payment_entry.insert()
+        payment_entry.submit()
+
+        # Update Sales Order with Payment Entry reference (Custom Field: payment_entry)
+        # frappe.db.set_value("Sales Order", sales_order.name, "payment_entry", payment_entry.name)
+
+        # Update Sales Order status to "To Deliver"
+        frappe.db.set_value("Sales Order", sales_order.name, "status", "To Deliver")
+        frappe.db.commit()
+
+        return payment_entry.name
+
+    except frappe.exceptions.ValidationError as e:
+        frappe.log_error(f"Validation Error: {str(e)}", "Payment Entry Error")
+        frappe.throw(_("Payment entry failed due to validation: {0}").format(str(e)))
+
+    except Exception as e:
+        logger.debug("Exception in create_payment_entry")
+        frappe.log_error(f"Unexpected error while creating payment entry for {sales_order.name}. Error: {str(e)}", "Payment Entry Error")
+        frappe.throw(_("An unexpected error occurred while creating the payment entry. Please check the logs and try again."))
+
+
 
 
 def set_session_user(user):

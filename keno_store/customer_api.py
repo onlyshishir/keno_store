@@ -329,7 +329,7 @@ def manage_customer_profile(profile=None):
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
-def get_customer_past_orders():
+def get_customer_past_orders(page=1, page_size=10):
     """
     Custom API to get the logged-in customer's past orders.
     Returns details such as order ID, date, status, and total amount.
@@ -358,12 +358,27 @@ def get_customer_past_orders():
         if not customer:
             frappe.throw("Customer profile not found for this user.", frappe.DoesNotExistError)
 
+        # Validate page and page_size
+        try:
+            page = int(page)
+            page_size = int(page_size)
+            if page <= 0 or page_size <= 0:
+                raise ValueError("Page and page size must be positive integers")
+        except ValueError as e:
+            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+
+        # Calculate the offset and limit for pagination
+        offset = (page - 1) * page_size
+        limit = page_size
+
         # Fetch past orders for the customer
         orders = frappe.get_all(
             "Sales Order",
             filters={"customer": customer["name"], "docstatus": 1},  # Assuming docstatus=1 means completed orders
             fields=["name", "transaction_date", "status", "grand_total"],
-            order_by="transaction_date desc"
+            order_by="transaction_date desc",
+            limit_start=offset,
+            limit_page_length=limit
         )
 
         # Prepare orders data
@@ -377,8 +392,21 @@ def get_customer_past_orders():
             for order in orders
         ]
 
+        # Check if there are more pages
+        total_orders = frappe.db.count('Sales Order', filters={'customer': customer["name"]})
+        total_pages = (total_orders + page_size - 1) // page_size  # Ceiling division
+
         # Return orders data
-        frappe.response["data"] = {"status": "success", "orders": order_data}
+        frappe.response["data"] = {
+            "status": "success",
+            "orders": order_data,
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_orders": total_orders,
+                "total_pages": total_pages,
+            },
+        }
 
     except frappe.PermissionError as e:
         # Handle permission errors (e.g., guest user trying to access)
@@ -648,3 +676,4 @@ def reorder_quotation(order_id=None):
             "message": "An unexpected error occurred. Please try again later.",
             "error": str(e),
         }
+
