@@ -366,7 +366,6 @@ def get_website_item_details(item_code):
         item_details["stock_qty"] = stock_qty if stock_qty else 0
 
         try:
-            item_price = frappe.db.get_value("Item Price", {"item_code": item_code, "selling": 1}, ["price_list_rate", "currency"], as_dict=True)
             # Fetch product information including pricing details
             product_info = get_product_info_for_website(item_code, skip_quotation_creation=True).get(
                 "product_info"
@@ -374,9 +373,7 @@ def get_website_item_details(item_code):
             if product_info and product_info["price"]:
                 item_details.update({
                     "currency": product_info["price"].get("currency"),
-                    "mrp": item_price.price_list_rate,
                     "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                    "price": product_info["price"].get("price_list_rate"),
                     "formatted_price": product_info["price"].get("formatted_price")
                 })
             if product_info["price"].get("discount_percent"):
