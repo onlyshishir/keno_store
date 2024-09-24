@@ -353,6 +353,7 @@ def get_website_item_details(item_code):
             "item_name": website_item.item_name,
             "description": website_item.description,
             # "image": website_item.website_image,
+            "item_group": website_item.item_group,
             "web_long_description": website_item.web_long_description,
             "is_in_stock": frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty") > 0,
             "uom": website_item.stock_uom,
@@ -365,21 +366,24 @@ def get_website_item_details(item_code):
         item_details["stock_qty"] = stock_qty if stock_qty else 0
 
         try:
+            item_price = frappe.db.get_value("Item Price", {"item_code": item_code, "selling": 1}, ["price_list_rate", "currency"], as_dict=True)
             # Fetch product information including pricing details
             product_info = get_product_info_for_website(item_code, skip_quotation_creation=True).get(
                 "product_info"
             )
             if product_info and product_info["price"]:
                 item_details.update({
+                    "currency": product_info["price"].get("currency"),
+                    "mrp": item_price.price_list_rate,
                     "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                    "formatted_price": product_info["price"].get("formatted_price"),
-                    "price_list_rate": product_info["price"].get("price_list_rate")
+                    "price": product_info["price"].get("price_list_rate"),
+                    "formatted_price": product_info["price"].get("formatted_price")
                 })
             if product_info["price"].get("discount_percent"):
                 item_details.update({
                     "discount_percent" : flt(product_info["price"].discount_percent)
                 })
-            if item_details.formatted_mrp:
+            if product_info["price"].get("formatted_mrp"):
                 item_details.update({
                     "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
                         "formatted_discount_rate"
@@ -392,12 +396,12 @@ def get_website_item_details(item_code):
             
 
         # Get item price from Item Price doctype
-        item_price = frappe.db.get_value("Item Price", {"item_code": item_code, "selling": 1}, ["price_list_rate", "currency"], as_dict=True)
-        if item_price:
-            item_details.update({
-                "price": item_price.price_list_rate,
-                "currency": item_price.currency
-            })
+        # item_price = frappe.db.get_value("Item Price", {"item_code": item_code, "selling": 1}, ["price_list_rate", "currency"], as_dict=True)
+        # if item_price:
+        #     item_details.update({
+        #         "price": item_price.price_list_rate,
+        #         "currency": item_price.currency
+        #     })
 
         # Get item reviews from the custom Website Item Review doctype
         reviews = frappe.get_all("Item Review", filters={"item": item_code},
