@@ -75,19 +75,39 @@ def get_cart_quotation(doc=None, session_id=None):
 
         # Get addresses for the party
         addresses = get_address_docs(party=party)
+        coupon_code = None
+
+        if quotation.coupon_code:
+            coupon = frappe.get_doc('Coupon Code', {'name': quotation.coupon_code})
+            # Access details from the coupon document
+            coupon_code = coupon.coupon_code
 
         # Update billing address if none exists and addresses are available
         if not doc.customer_address and addresses:
             update_cart_address("billing", addresses[0].name)
+        
+        f_billing_address = get_formatted_address(quotation.customer_address)
+        f_shipping_address = get_formatted_address(quotation.shipping_address_name)
+
         cart = {
             "session_id": quotation.custom_session_id,
             "contact_name": quotation.contact_display,
             "contact_mobile": quotation.contact_mobile,
             "contact_email": quotation.contact_email,
+            "net_total": quotation.net_total,
+            "taxes_and_charges": quotation.base_total_taxes_and_charges,
             "grand_total": quotation.grand_total,
+            "rounding_adjustment": quotation.grand_total,
             "rounding_adjustment": quotation.rounding_adjustment,
             "rounded_total": quotation.rounded_total,
             "in_words": quotation.in_words,
+            "coupon_code": coupon_code,
+            "is_coupon_applied": bool(quotation.coupon_code),
+            "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
+            "delivery_option": {
+                "delivery_method": quotation.custom_delivery_method,
+                "delivery_slot": quotation.delivery_slot
+            },
             "items": [
                 {
                     "item_code": item.item_code,
@@ -95,6 +115,7 @@ def get_cart_quotation(doc=None, session_id=None):
                     "quantity": item.qty,
                     "base_price": item.price_list_rate,
                     "price": item.rate,
+                    "discount_amount": item.discount_amount,
                     "amount": item.amount,
                     "image": item.image
                 }
@@ -109,11 +130,8 @@ def get_cart_quotation(doc=None, session_id=None):
                 for tax in quotation.taxes
             ],
             # "shipping_address": get_shipping_addresses(party)[0],
-            "shipping_address": (
-                get_shipping_addresses(party)[0]
-                if get_shipping_addresses(party)
-                else None
-            ),
+            "billing_address":f_billing_address,
+            "shipping_address": f_shipping_address,
         }
 
         # # Return the cart quotation and related data
@@ -144,6 +162,21 @@ def get_cart_quotation(doc=None, session_id=None):
             "message": "An unexpected error occurred. Please try again later.",
             "error": str(e),
         }
+
+
+def get_formatted_address(address):
+    if address:
+        address_doc = frappe.get_doc("Address", address)
+        return {
+            "address_line1": address_doc.address_line1,
+            "address_line2": address_doc.address_line2,
+            "city": address_doc.city,
+            "state": address_doc.state,
+            "pincode": address_doc.pincode,
+            "country": address_doc.country,
+        }
+    else:
+        return None
 
 
 @frappe.whitelist()
@@ -185,7 +218,7 @@ def get_billing_addresses(party=None):
 
 
 @frappe.whitelist(True)
-def place_order(order_info, session_id=None):
+def place_order(session_id=None):
     try:
         # Check if Authorization header is present
         auth_header = frappe.get_request_header("Authorization", str)
@@ -232,44 +265,51 @@ def place_order(order_info, session_id=None):
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
 
-        quotation.contact_display = order_info["contact_name"]
-        quotation.contact_mobile = order_info["contact_mobile"]
-        quotation.contact_email = order_info["contact_email"]
+        # quotation.contact_display = order_info["contact_name"]
+        # quotation.contact_mobile = order_info["contact_mobile"]
+        # quotation.contact_email = order_info["contact_email"]
 
         # Update or create the Address document
-        address = order_info["address"]
-        if address:
-            address_doc = (
-                frappe.get_doc("Address", quotation.shipping_address_name)
-                if quotation.shipping_address_name
-                else frappe.new_doc("Address")
-            )
-            if address_doc.address_title is None:
-                address_doc.address_title = (
-                    quotation.contact_display + " - Primary Address"
-                )
-            address_doc.address_line1 = address.get("address_line1")
-            address_doc.address_line2 = address.get("address_line2")
-            address_doc.city = address.get("city")
-            address_doc.state = address.get("state")
-            address_doc.pincode = address.get("pincode")
-            address_doc.country = address.get("country")
-            address_doc.save(ignore_permissions=True)
+        # address = order_info["address"]
+        # if address:
+        #     address_doc = (
+        #         frappe.get_doc("Address", quotation.shipping_address_name)
+        #         if quotation.shipping_address_name
+        #         else frappe.new_doc("Address")
+        #     )
+        #     if address_doc.address_title is None:
+        #         address_doc.address_title = (
+        #             quotation.contact_display + " - Primary Address"
+        #         )
+        #     address_doc.address_line1 = address.get("address_line1")
+        #     address_doc.address_line2 = address.get("address_line2")
+        #     address_doc.city = address.get("city")
+        #     address_doc.state = address.get("state")
+        #     address_doc.pincode = address.get("pincode")
+        #     address_doc.country = address.get("country")
+        #     address_doc.save(ignore_permissions=True)
 
-        quotation.shipping_address_name = address_doc
+        # quotation.shipping_address_name = address_doc
 
-        if order_info["delivery_option"]:
-            if order_info["delivery_option"].get("delivery_method"):
-                quotation.custom_delivery_method = order_info["delivery_option"][
-                    "delivery_method"
-                ]
-            if order_info["delivery_option"].get("delivery_slot"):
-                delivery_slot = frappe.get_doc(
-                    "Delivery Slot", order_info["delivery_option"]["delivery_slot"]
-                )
-                quotation.delivery_slot = delivery_slot.name
-            else:
-                delivery_slot = None
+        # if order_info["delivery_option"]:
+        #     if order_info["delivery_option"].get("delivery_method"):
+        #         quotation.custom_delivery_method = order_info["delivery_option"][
+        #             "delivery_method"
+        #         ]
+        #     if order_info["delivery_option"].get("delivery_slot"):
+        #         delivery_slot = frappe.get_doc(
+        #             "Delivery Slot", order_info["delivery_option"]["delivery_slot"]
+        #         )
+        #         quotation.delivery_slot = delivery_slot.name
+        #     else:
+        #         delivery_slot = None
+        
+        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.delivery_slot) :
+            frappe.throw("Cart is not ready to place order", frappe.ValidationError)
+
+        delivery_slot = frappe.get_doc(
+            "Delivery Slot", quotation.delivery_slot
+        )
 
         quotation.flags.ignore_permissions = True
         quotation.submit()
@@ -277,9 +317,6 @@ def place_order(order_info, session_id=None):
         if quotation.quotation_to == "Lead" and quotation.party_name:
             # company used to create customer accounts
             frappe.defaults.set_user_default("company", quotation.company)
-
-        if not (quotation.shipping_address_name or quotation.customer_address):
-            frappe.throw(_("Set Shipping Address or Billing Address"))
 
         customer_group = cart_settings.default_customer_group
 
@@ -313,7 +350,7 @@ def place_order(order_info, session_id=None):
                         )
         # Adding Delivery Method, Delivery Date And Delivery Slots data
         sales_order.custom_delivery_method = quotation.custom_delivery_method
-        if delivery_slot:
+        if quotation.delivery_slot:
             sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
 
         sales_order.flags.ignore_permissions = True
@@ -328,15 +365,16 @@ def place_order(order_info, session_id=None):
             "X-Forwarded-For"
         ) or frappe.request.headers.get("Remote-Addr")
         amount_in_cents = int(float(sales_order.rounded_total) * 100)
+        shipping_address_doc=frappe.get_doc("Address", quotation.shipping_address_name)
         intent = stripe.PaymentIntent.create(
             amount=amount_in_cents,
             currency=sales_order.currency,
             metadata={
                 "integration_check": "accept_a_payment",
                 "sales_order": sales_order.name,
-                "contact_name": order_info["contact_name"],
-                "contact_email": order_info["contact_email"],
-                "contact_mobile": order_info["contact_mobile"],
+                "contact_name": quotation.contact_display,
+                "contact_email": quotation.contact_email,
+                "contact_mobile": quotation.contact_mobile,
                 "ip_address": ip_address,  # Include IP address in metadata
             },
             automatic_payment_methods={
@@ -344,16 +382,16 @@ def place_order(order_info, session_id=None):
                 "allow_redirects": "never",  # Prevent redirects
             },
             description=quotation.name + " cart checkout",
-            receipt_email=order_info["contact_email"],  # Include customer email
+            receipt_email=quotation.contact_email,  # Include customer email
             shipping={
-                "name": order_info["contact_name"],  # Include customer name in shipping
+                "name": quotation.contact_display,  # Include customer name in shipping
                 "address": {
-                    "line1": order_info["address"].get("line1", ""),
-                    "line2": order_info["address"].get("line2", ""),
-                    "city": order_info["address"].get("city", ""),
-                    "state": order_info["address"].get("state", ""),
-                    "postal_code": order_info["address"].get("postal_code", ""),
-                    "country": order_info["address"].get("country", ""),
+                    "line1": shipping_address_doc.address_line1,
+                    "line2": shipping_address_doc.address_line2,
+                    "city": shipping_address_doc.city,
+                    "state": shipping_address_doc.state,
+                    "postal_code": shipping_address_doc.pincode,
+                    "country": shipping_address_doc.country,
                 },
             },
         )
@@ -770,7 +808,8 @@ def apply_cart_settings(party=None, quotation=None):
 
     set_taxes(quotation, cart_settings)
 
-    _apply_shipping_rule(party, quotation, cart_settings)
+    if quotation.custom_delivery_method:
+        _apply_shipping_rule(party, quotation, cart_settings)
 
 
 def set_price_list_and_rate(quotation, cart_settings):
@@ -1004,18 +1043,48 @@ def apply_shipping_rule(shipping_rule):
 
 
 def _apply_shipping_rule(party=None, quotation=None, cart_settings=None):
-    if not quotation.shipping_rule:
+    if not quotation:
+        frappe.throw(_("Quotation document is required for applying shipping rules."))
+
+    # Initialize shipping_rules as None
+    shipping_rules = None
+
+    # Check if shipping rule is not already set
+    # if not quotation.shipping_rule:
+        # Check if custom delivery method is set
+    if quotation.custom_delivery_method:
+        # Handle store pickup scenario
+        if quotation.custom_delivery_method == 'Store Pickup':
+            try:
+                shipping_rules = [frappe.get_doc("Shipping Rule", "Store Pickup")]
+
+            except frappe.DoesNotExistError:
+                frappe.throw(_("Store Pickup shipping rule does not exist."))
+        else:
+            shipping_rules = get_shipping_rules(quotation, cart_settings)
+    else:
+        # Get available shipping rules based on the quotation and cart settings
         shipping_rules = get_shipping_rules(quotation, cart_settings)
 
-        if not shipping_rules:
-            return
+    # if not shipping_rules:
+    #     shipping_rules = get_shipping_rules(quotation, cart_settings)
+    #     quotation.shipping_rule = shipping_rules[0]
 
-        elif quotation.shipping_rule not in shipping_rules:
-            quotation.shipping_rule = shipping_rules[0]
+    # # Set the first shipping rule from the list if not already applied
+    # elif quotation.shipping_rule not in shipping_rules:
+    #     quotation.shipping_rule = shipping_rules[0]
+    # shipping_rules = get_shipping_rules(quotation, cart_settings)
+    if shipping_rules:
+        quotation.shipping_rule = shipping_rules[0]
 
+    # Validate and apply the shipping rule
     if quotation.shipping_rule:
-        quotation.run_method("apply_shipping_rule")
-        quotation.run_method("calculate_taxes_and_totals")
+        try:
+            quotation.run_method("apply_shipping_rule")
+            quotation.run_method("calculate_taxes_and_totals")
+        except Exception as e:
+            frappe.log_error(f"Failed to apply shipping rule: {str(e)}", "Shipping Rule Application Error")
+            frappe.throw(_("Failed to apply shipping rule. Please check the logs for more details."))
 
 
 def get_applicable_shipping_rules(party=None, quotation=None):
@@ -1117,6 +1186,8 @@ def apply_coupon_code(
         else:
             quotation = _get_cart_quotation()
 
+        if not quotation.items:
+            frappe.throw(_("Empty cart", frappe.ValidationError))
         quotation.coupon_code = coupon_name
         quotation.flags.ignore_permissions = True
         quotation.save()
@@ -1831,3 +1902,131 @@ def set_session_user(user):
     frappe.local.user = user
     frappe.local.session.user_info = frappe.get_doc("User", user)
     frappe.local.session.user_roles = frappe.get_roles(user)
+
+
+@frappe.whitelist(allow_guest=True)
+def update_cart_details(cart, session_id=None):
+    try:
+        # Check if Authorization header is present
+        auth_header = frappe.get_request_header("Authorization", str)
+        if not auth_header:
+            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
+
+        # Validate authorization via API keys
+        api_keys = auth_header.split(" ")[1:]
+        if not api_keys:
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
+
+        validate_auth_via_api_keys(api_keys)
+
+        # Check if the user is logged in
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            if session_id is None:
+                frappe.throw("Guest user must provide session ID.", frappe.DataError)
+
+        # Get the party (customer)
+        party = get_party()
+
+        # Fetch or create the quotation (cart)
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            quotation = frappe.get_all(
+                "Quotation",
+                filters={"custom_session_id": session_id, "docstatus": 0},
+                limit=1,
+            )
+            if quotation:
+                quotation = frappe.get_doc("Quotation", quotation[0].name)
+            else:
+                frappe.throw("Cart is empty!", frappe.ValidationError)
+        else:
+            quotation = _get_cart_quotation(party)
+
+        # Check if there are no items in the quotation
+        if not quotation.items or len(quotation.items) == 0:
+            frappe.throw("Cart is empty!", frappe.ValidationError)
+
+        # quotation = _get_cart_quotation()
+        cart_settings = frappe.get_cached_doc("Webshop Settings")
+        quotation.company = cart_settings.company
+
+        quotation.contact_display = cart["contact_name"]
+        quotation.contact_mobile = cart["contact_mobile"]
+        # quotation.contact_email = cart["contact_email"]
+
+        # Update or create the Billing Address document
+        billing_address = cart["billing_address"]
+        if billing_address:
+            billing_address_doc = (
+                frappe.get_doc("Address", quotation.customer_address)
+                if quotation.customer_address
+                else frappe.new_doc("Address")
+            )
+            if billing_address_doc.address_title is None:
+                billing_address_doc.address_title = (
+                    quotation.contact_display + " - Billing Address"
+                )
+            billing_address_doc.address_line1 = billing_address.get("address_line1")
+            billing_address_doc.address_line2 = billing_address.get("address_line2")
+            billing_address_doc.city = billing_address.get("city")
+            billing_address_doc.state = billing_address.get("state")
+            billing_address_doc.pincode = billing_address.get("pincode")
+            billing_address_doc.country = billing_address.get("country")
+            billing_address_doc.save(ignore_permissions=True)
+
+        quotation.customer_address = billing_address_doc
+
+        # Update or create the Shipping Address document
+        shipping_address = cart["shipping_address"]
+        if shipping_address:
+            shipping_address_doc = (
+                frappe.get_doc("Address", quotation.shipping_address_name)
+                if quotation.shipping_address_name
+                else frappe.new_doc("Address")
+            )
+            if shipping_address_doc.address_title is None:
+                shipping_address_doc.address_title = (
+                    quotation.contact_display + " - Shipping Address"
+                )
+            shipping_address_doc.address_line1 = shipping_address.get("address_line1")
+            shipping_address_doc.address_line2 = shipping_address.get("address_line2")
+            shipping_address_doc.city = shipping_address.get("city")
+            shipping_address_doc.state = shipping_address.get("state")
+            shipping_address_doc.pincode = shipping_address.get("pincode")
+            shipping_address_doc.country = shipping_address.get("country")
+            shipping_address_doc.save(ignore_permissions=True)
+
+        quotation.shipping_address_name = shipping_address_doc
+
+        if cart["delivery_option"]:
+            if cart["delivery_option"].get("delivery_method"):
+                quotation.custom_delivery_method = cart["delivery_option"][
+                    "delivery_method"
+                ]
+            if cart["delivery_option"].get("delivery_slot"):
+                delivery_slot = frappe.get_doc(
+                    "Delivery Slot", cart["delivery_option"]["delivery_slot"]
+                )
+                quotation.delivery_slot = delivery_slot.name
+            else:
+                delivery_slot = None
+
+        _apply_shipping_rule(party, quotation, cart_settings)
+        quotation.flags.ignore_permissions = True
+        quotation.save()
+
+        frappe.local.response["http_status_code"] = HTTPStatus.OK
+        frappe.response["data"] = {
+            "status": "success",
+            "message": _("Cart details updated successfully")
+        }
+
+    except Exception as e:
+        # Rollback the transaction in case of any error
+        frappe.db.rollback()
+        # Log the error for debugging
+        frappe.log_error(frappe.get_traceback(), "Place Order Failed")
+        # Raise the error to inform the client
+        frappe.throw(_("There was an error processing the order: {0}").format(str(e)))

@@ -265,7 +265,8 @@ def manage_customer_profile(profile=None):
             last_name = profile_data.get("last_name")
             mobile_no = profile_data.get("mobile_no")
             email = profile_data.get("email")
-            address = profile_data.get("address", {})
+            billing_address = profile_data.get("billing_address", {})
+            shipping_address = profile_data.get("shipping_address", {})
 
             # Update Customer details
             if not first_name or not last_name or not email:
@@ -281,21 +282,53 @@ def manage_customer_profile(profile=None):
             customer_doc.email_id = email
             customer_doc.save(ignore_permissions=True)
 
-            # Update or create the Address document
-            if address:
-                address_doc = frappe.get_doc("Address", customer_doc.customer_primary_address) if customer_doc.customer_primary_address else frappe.new_doc("Address")
-                if address_doc.address_title is None:
-                    address_doc.address_title = customer_doc.customer_name + " - Primary Address"
-                address_doc.address_line1 = address.get("address_line1")
-                address_doc.address_line2 = address.get("address_line2")
-                address_doc.city = address.get("city")
-                address_doc.state = address.get("state")
-                address_doc.pincode = address.get("pincode")
-                address_doc.country = address.get("country")
-                address_doc.save(ignore_permissions=True)
+            # Update or create the Billing Address document
+            if billing_address:
+                billing_address_doc = frappe.get_doc("Address", customer_doc.customer_primary_address) if customer_doc.customer_primary_address else frappe.new_doc("Address")
+                billing_address_doc.address_title = billing_address.get("address_line1")
+                billing_address_doc.address_line1 = billing_address.get("address_line1")
+                billing_address_doc.address_line2 = billing_address.get("address_line2")
+                billing_address_doc.city = billing_address.get("city")
+                billing_address_doc.state = billing_address.get("state")
+                billing_address_doc.pincode = billing_address.get("pincode")
+                billing_address_doc.country = billing_address.get("country")
+                billing_address_doc.address_type = 'Billing'
+                billing_address_doc.owner= user
+                billing_address_doc.is_primary_address = True
+                billing_address_doc.save(ignore_permissions=True)
 
-                customer_doc.customer_primary_address = address_doc.name
+                customer_doc = frappe.get_doc("Customer", {"email_id": email})
+                customer_doc.customer_primary_address = billing_address_doc.name
                 customer_doc.save(ignore_permissions=True)
+                
+
+            if shipping_address:
+                shipping_address_doc = frappe.db.get_value(
+                    "Address",
+                    {"owner": user, "is_shipping_address": 1, "disabled": 0},
+                    ["name", "address_line1", "address_line2", "city", "state", "country", "pincode"],
+                    as_dict=True
+                )
+                if not shipping_address_doc:
+                    shipping_address_doc = frappe.new_doc("Address")
+                else:
+                    shipping_address_doc = frappe.get_doc("Address", shipping_address_doc.name)
+                    # shipping_address_doc.address_title = shipping_address.get("address_line1")
+                #     shipping_address_doc.address_title = customer_doc.customer_name + " - Shipping Address"
+                # if shipping_address_doc.address_title is None:
+                #     shipping_address_doc.address_title = customer_doc.customer_name + " - Shipping Address"
+                shipping_address_doc.address_title = shipping_address.get("address_line1")
+                shipping_address_doc.address_line1 = shipping_address.get("address_line1")
+                shipping_address_doc.address_line2 = shipping_address.get("address_line2")
+                shipping_address_doc.city = shipping_address.get("city")
+                shipping_address_doc.state = shipping_address.get("state")
+                shipping_address_doc.pincode = shipping_address.get("pincode")
+                shipping_address_doc.country = shipping_address.get("country")
+                shipping_address_doc.address_type = 'Shipping'
+                shipping_address_doc.owner= user
+                shipping_address_doc.is_shipping_address = True
+                shipping_address_doc.save(ignore_permissions=True)
+                # shipping_address_doc.submit() 
 
             # Return success response
             frappe.response["data"] = {"status": "success", "message": "Profile updated successfully."}
