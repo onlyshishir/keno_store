@@ -1056,12 +1056,16 @@ def _apply_shipping_rule(party=None, quotation=None, cart_settings=None):
         # Handle store pickup scenario
         if quotation.custom_delivery_method == 'Store Pickup':
             try:
-                shipping_rules = [frappe.get_doc("Shipping Rule", "Store Pickup")]
+                shipping_rules = [frappe.get_doc("Shipping Rule", "Store Pickup").name]
 
             except frappe.DoesNotExistError:
                 frappe.throw(_("Store Pickup shipping rule does not exist."))
-        else:
-            shipping_rules = get_shipping_rules(quotation, cart_settings)
+        elif quotation.custom_delivery_method == 'Home Delivery':
+            try:
+                shipping_rules = [frappe.get_doc("Shipping Rule", "Fixed delivery rate").name]
+
+            except frappe.DoesNotExistError:
+                frappe.throw(_("Store Pickup shipping rule does not exist."))
     else:
         # Get available shipping rules based on the quotation and cart settings
         shipping_rules = get_shipping_rules(quotation, cart_settings)
@@ -1952,13 +1956,19 @@ def update_cart_details(cart, session_id=None):
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
 
-        quotation.contact_display = cart["contact_name"]
-        quotation.contact_mobile = cart["contact_mobile"]
+        # Check if 'contact_name' is provided and not null, then update
+        contact_name = cart.get("contact_name")
+        if contact_name:
+            quotation.contact_display = contact_name
+        
+        contact_mobile = cart.get("contact_mobile")
+        if contact_mobile:
+            quotation.contact_mobile = contact_mobile
         # quotation.contact_email = cart["contact_email"]
 
-        # Update or create the Billing Address document
-        billing_address = cart["billing_address"]
+        billing_address = cart.get("billing_address")
         if billing_address:
+            # Update or create the Billing Address document
             billing_address_doc = (
                 frappe.get_doc("Address", quotation.customer_address)
                 if quotation.customer_address
@@ -1966,7 +1976,7 @@ def update_cart_details(cart, session_id=None):
             )
             if billing_address_doc.address_title is None:
                 billing_address_doc.address_title = (
-                    quotation.contact_display + " - Billing Address"
+                    quotation.name + " - Billing Address"
                 )
             billing_address_doc.address_line1 = billing_address.get("address_line1")
             billing_address_doc.address_line2 = billing_address.get("address_line2")
@@ -1976,11 +1986,11 @@ def update_cart_details(cart, session_id=None):
             billing_address_doc.country = billing_address.get("country")
             billing_address_doc.save(ignore_permissions=True)
 
-        quotation.customer_address = billing_address_doc
+            quotation.customer_address = billing_address_doc.name
 
-        # Update or create the Shipping Address document
-        shipping_address = cart["shipping_address"]
+        shipping_address = cart.get("shipping_address")
         if shipping_address:
+            # Update or create the Shipping Address document
             shipping_address_doc = (
                 frappe.get_doc("Address", quotation.shipping_address_name)
                 if quotation.shipping_address_name
@@ -1988,7 +1998,7 @@ def update_cart_details(cart, session_id=None):
             )
             if shipping_address_doc.address_title is None:
                 shipping_address_doc.address_title = (
-                    quotation.contact_display + " - Shipping Address"
+                    quotation.name + " - Shipping Address"
                 )
             shipping_address_doc.address_line1 = shipping_address.get("address_line1")
             shipping_address_doc.address_line2 = shipping_address.get("address_line2")
@@ -1998,24 +2008,28 @@ def update_cart_details(cart, session_id=None):
             shipping_address_doc.country = shipping_address.get("country")
             shipping_address_doc.save(ignore_permissions=True)
 
-        quotation.shipping_address_name = shipping_address_doc
+            quotation.shipping_address_name = shipping_address_doc.name
 
-        if cart["delivery_option"]:
-            if cart["delivery_option"].get("delivery_method"):
-                quotation.custom_delivery_method = cart["delivery_option"][
-                    "delivery_method"
-                ]
-            if cart["delivery_option"].get("delivery_slot"):
+        delivery_option = cart.get("delivery_option")
+        if delivery_option:
+            if delivery_option.get("delivery_method"):
+                quotation.custom_delivery_method = delivery_option.get("delivery_method")
+            if delivery_option.get("delivery_slot"):
                 delivery_slot = frappe.get_doc(
-                    "Delivery Slot", cart["delivery_option"]["delivery_slot"]
+                    "Delivery Slot", delivery_option.get("delivery_slot")
                 )
                 quotation.custom_delivery_slot = delivery_slot.name
             else:
                 delivery_slot = None
 
-        _apply_shipping_rule(party, quotation, cart_settings)
+        # quotation.shipping_rule = frappe.get_doc("Shipping Rule", "Store Pickup")
+        # _apply_shipping_rule(party, quotation, cart_settings)
+        apply_cart_settings(quotation=quotation)
         quotation.flags.ignore_permissions = True
         quotation.save()
+
+        # frappe.db.set_value("Quotation", quotation.name, "shipping_rule", "Store Pickup")
+        # frappe.db.commit()
 
         frappe.local.response["http_status_code"] = HTTPStatus.OK
         frappe.response["data"] = {
