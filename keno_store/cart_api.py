@@ -2044,3 +2044,74 @@ def update_cart_details(cart, session_id=None):
         frappe.log_error(frappe.get_traceback(), "Place Order Failed")
         # Raise the error to inform the client
         frappe.throw(_("There was an error processing the order: {0}").format(str(e)))
+
+
+@frappe.whitelist(allow_guest=True, methods="GET")
+def get_pickup_store():
+    try:
+        # Check if Authorization header is present
+        auth_header = frappe.get_request_header("Authorization", str)
+        if not auth_header:
+            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
+
+        # Validate authorization via API keys
+        api_keys = auth_header.split(" ")[1:]
+        if not api_keys:
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
+
+        # Call the custom validation function for API keys
+        validate_auth_via_api_keys(api_keys)
+
+        # Fetch warehouses where warehouse_type is 'Pickup Point'
+        pickup_points = frappe.get_all(
+            "Warehouse",
+            filters={"warehouse_type": "Pickup Point"},
+            fields=["name", "warehouse_name", "address_line_1", "address_line_2", "city", "state", "pin"]
+        )
+
+        for pickup_point in pickup_points:
+            # Fetch working hours from the child table linked to the Warehouse
+            working_hours = frappe.get_all(
+                "Warehouse Working Hours",
+                filters={"parent": pickup_point.name},
+                fields=["day_of_week", "start_time", "end_time"]
+            )
+            
+            # Add working hours to the warehouse
+            pickup_point["working_hours"] = working_hours
+
+        # Return the list of pickup points with working hours
+        frappe.local.response["http_status_code"] = HTTPStatus.OK
+        frappe.response["data"] = {
+            "status": "success",
+            "pickup_points": pickup_points
+        }
+
+    except frappe.AuthenticationError as e:
+        # Handle authentication errors (invalid/missing API keys)
+        frappe.local.response["http_status_code"] = HTTPStatus.UNAUTHORIZED
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+        
+    except frappe.PermissionError as e:
+        # Handle permission errors
+        frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+
+    except Exception as e:
+        # Handle general exceptions
+        frappe.log_error(frappe.get_traceback(), "Error in get_pickup_store API")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {
+            "status": "error",
+            "message": "There was an error processing the request."
+        }
+
