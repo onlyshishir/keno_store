@@ -1757,7 +1757,7 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
                 "party_type": "Customer",
                 "party": sales_invoice.customer,
                 "paid_to": (
-                    "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
+                    "1201 - Stripe FT - KN"  # Account used for Stripe payments
                 ),  # Bank account where the payment is received
                 "mode_of_payment":"Stripe",
                 "paid_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
