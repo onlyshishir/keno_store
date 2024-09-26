@@ -1829,6 +1829,8 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
 
 def create_payment_entry_with_so(sales_order, payment_intent):
     try:
+        # Log the references
+        logger.debug(f"create_payment_entry_with_so: {sales_order.name}")
         # Prepare values for Payment Entry
         paid_amount = sales_order.rounded_total or sales_order.grand_total
         received_amount = paid_amount
@@ -1861,6 +1863,7 @@ def create_payment_entry_with_so(sales_order, payment_intent):
                 }
             ],
         })
+        logger.debug(f"In create_payment_entry_with_so: payment_entry: {payment_entry}")
 
         # Set exchange rate to avoid currency issues (assuming USD for now)
         payment_entry.target_exchange_rate = 1
