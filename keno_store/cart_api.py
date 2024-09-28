@@ -103,10 +103,10 @@ def get_cart_quotation(doc=None, session_id=None):
             "in_words": quotation.in_words,
             "coupon_code": coupon_code,
             "is_coupon_applied": bool(quotation.coupon_code),
-            "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.custom_delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
+            "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
             "delivery_option": {
                 "delivery_method": quotation.custom_delivery_method,
-                "delivery_slot": quotation.custom_delivery_slot
+                "delivery_slot": quotation.delivery_slot
             },
             "items": [
                 {
@@ -300,15 +300,15 @@ def place_order(session_id=None):
         #         delivery_slot = frappe.get_doc(
         #             "Delivery Slot", order_info["delivery_option"]["delivery_slot"]
         #         )
-        #         quotation.custom_delivery_slot = delivery_slot.name
+        #         quotation.delivery_slot = delivery_slot.name
         #     else:
         #         delivery_slot = None
         
-        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.custom_delivery_slot) :
+        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.delivery_slot) :
             frappe.throw("Cart is not ready to place order", frappe.ValidationError)
 
         delivery_slot = frappe.get_doc(
-            "Delivery Slot", quotation.custom_delivery_slot
+            "Delivery Slot", quotation.delivery_slot
         )
 
         quotation.flags.ignore_permissions = True
@@ -350,7 +350,7 @@ def place_order(session_id=None):
                         )
         # Adding Delivery Method, Delivery Date And Delivery Slots data
         sales_order.custom_delivery_method = quotation.custom_delivery_method
-        if quotation.custom_delivery_slot:
+        if quotation.delivery_slot:
             sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
 
         sales_order.flags.ignore_permissions = True
@@ -2021,7 +2021,7 @@ def update_cart_details(cart, session_id=None):
                 delivery_slot = frappe.get_doc(
                     "Delivery Slot", delivery_option.get("delivery_slot")
                 )
-                quotation.custom_delivery_slot = delivery_slot.name
+                quotation.delivery_slot = delivery_slot.name
             else:
                 delivery_slot = None
 
