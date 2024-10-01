@@ -1,4 +1,5 @@
 import hashlib
+import json
 import uuid
 import frappe
 from frappe import _
@@ -263,7 +264,6 @@ def get_product_filter_data(query_args=None):
         item_group (str): Valid Item Group
         from_filters (bool): Set as True to jump to page 1
     """
-    logger.debug(query_args)
     if isinstance(query_args, str):
         query_args = json.loads(query_args)
 
@@ -301,7 +301,6 @@ def get_product_filter_data(query_args=None):
             start=start,
             item_group=item_group,
         )
-        logger.debug(result)
     except Exception:
         frappe.log_error("Product query with filter failed")
         return {"exc": "Something went wrong!"}
@@ -471,7 +470,7 @@ def get_stock_availability(item):
     #     item_details.is_in_stock = get_stock_availability_from_template(item_details.item_code, warehouse)
 
 @frappe.whitelist(allow_guest=True)
-def search(query):
+def search(query=None):
     from webshop.templates.pages.product_search import (
         product_search as product_search_from_template,
         get_category_suggestions as get_category_suggestions_from_template
