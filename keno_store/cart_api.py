@@ -103,10 +103,10 @@ def get_cart_quotation(doc=None, session_id=None):
             "in_words": quotation.in_words,
             "coupon_code": coupon_code,
             "is_coupon_applied": bool(quotation.coupon_code),
-            "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
+            "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.custom_delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
             "delivery_option": {
                 "delivery_method": quotation.custom_delivery_method,
-                "delivery_slot": quotation.delivery_slot
+                "delivery_slot": quotation.custom_delivery_slot
             },
             "items": [
                 {
@@ -218,7 +218,7 @@ def get_billing_addresses(party=None):
 
 
 @frappe.whitelist(True)
-def place_order(session_id=None):
+def place_order(payment_method, session_id=None):
     try:
         # Check if Authorization header is present
         auth_header = frappe.get_request_header("Authorization", str)
@@ -239,6 +239,14 @@ def place_order(session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
+        
+        # Define the allowed payment methods
+        allowed_payment_methods = ["card", "google_pay", "apple_pay", "paypal"]
+
+        # Check if the payment method is valid
+        if payment_method not in allowed_payment_methods:
+            # Throw an exception if the payment method is invalid
+            frappe.throw(f"Invalid payment method: {payment_method}. Allowed methods are: {', '.join(allowed_payment_methods)}.", frappe.ValidationError)
 
         # Get the party (customer)
         party = get_party()
@@ -264,51 +272,12 @@ def place_order(session_id=None):
         # quotation = _get_cart_quotation()
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
-
-        # quotation.contact_display = order_info["contact_name"]
-        # quotation.contact_mobile = order_info["contact_mobile"]
-        # quotation.contact_email = order_info["contact_email"]
-
-        # Update or create the Address document
-        # address = order_info["address"]
-        # if address:
-        #     address_doc = (
-        #         frappe.get_doc("Address", quotation.shipping_address_name)
-        #         if quotation.shipping_address_name
-        #         else frappe.new_doc("Address")
-        #     )
-        #     if address_doc.address_title is None:
-        #         address_doc.address_title = (
-        #             quotation.contact_display + " - Primary Address"
-        #         )
-        #     address_doc.address_line1 = address.get("address_line1")
-        #     address_doc.address_line2 = address.get("address_line2")
-        #     address_doc.city = address.get("city")
-        #     address_doc.state = address.get("state")
-        #     address_doc.pincode = address.get("pincode")
-        #     address_doc.country = address.get("country")
-        #     address_doc.save(ignore_permissions=True)
-
-        # quotation.shipping_address_name = address_doc
-
-        # if order_info["delivery_option"]:
-        #     if order_info["delivery_option"].get("delivery_method"):
-        #         quotation.custom_delivery_method = order_info["delivery_option"][
-        #             "delivery_method"
-        #         ]
-        #     if order_info["delivery_option"].get("delivery_slot"):
-        #         delivery_slot = frappe.get_doc(
-        #             "Delivery Slot", order_info["delivery_option"]["delivery_slot"]
-        #         )
-        #         quotation.delivery_slot = delivery_slot.name
-        #     else:
-        #         delivery_slot = None
         
-        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.delivery_slot) :
+        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.custom_delivery_slot) :
             frappe.throw("Cart is not ready to place order", frappe.ValidationError)
 
         delivery_slot = frappe.get_doc(
-            "Delivery Slot", quotation.delivery_slot
+            "Delivery Slot", quotation.custom_delivery_slot
         )
 
         quotation.flags.ignore_permissions = True
@@ -350,14 +319,10 @@ def place_order(session_id=None):
                         )
         # Adding Delivery Method, Delivery Date And Delivery Slots data
         sales_order.custom_delivery_method = quotation.custom_delivery_method
-        if quotation.delivery_slot:
+        if quotation.custom_delivery_slot:
             sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
-
-        sales_order.flags.ignore_permissions = True
-        sales_order.save()
-        sales_order.submit()
-        frappe.db.set_value("Sales Order", sales_order.name, "status", "To Bill")
-        frappe.db.commit()
+        
+        sales_order.custom_payment_method=payment_method
 
         # Create a Stripe PaymentIntent
         stripe_keys = get_stripe_keys()
@@ -377,10 +342,11 @@ def place_order(session_id=None):
                 "contact_mobile": quotation.contact_mobile,
                 "ip_address": ip_address,  # Include IP address in metadata
             },
-            automatic_payment_methods={
-                "enabled": True,
-                "allow_redirects": "never",  # Prevent redirects
-            },
+            # automatic_payment_methods={
+            #     "enabled": True,
+            #     "allow_redirects": "never",  # Prevent redirects
+            # },
+            payment_method_types=["card"],
             description=quotation.name + " cart checkout",
             receipt_email=quotation.contact_email,  # Include customer email
             shipping={
@@ -395,6 +361,13 @@ def place_order(session_id=None):
                 },
             },
         )
+
+        sales_order.custom_payment_reference=intent["id"]
+        sales_order.flags.ignore_permissions = True
+        sales_order.save()
+        sales_order.submit()
+        frappe.db.set_value("Sales Order", sales_order.name, "status", "To Bill")
+        frappe.db.commit()
 
         if hasattr(frappe.local, "cookie_manager"):
             frappe.local.cookie_manager.delete_cookie("cart_count")
@@ -414,6 +387,20 @@ def place_order(session_id=None):
         frappe.log_error(frappe.get_traceback(), "Place Order Failed")
         # Raise the error to inform the client
         frappe.throw(_("There was an error processing the order: {0}").format(str(e)))
+
+
+def cancel_stripe_payment_intent(sales_order):
+    # Retrieve and cancel the Stripe PaymentIntent linked to this Sales Order
+    stripe_payment_id = sales_order.custom_payment_reference
+    if stripe_payment_id:
+        try:
+            # Create a Stripe PaymentIntent
+            stripe_keys = get_stripe_keys()
+            stripe.PaymentIntent.cancel(stripe_payment_id)
+            frappe.msgprint(f"Stripe Payment Intent {stripe_payment_id} has been cancelled.")
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), "Stripe Payment Cancel Failed")
+            frappe.throw(f"Failed to cancel Stripe Payment Intent: {str(e)}")
 
 
 def get_date_and_time_slot(delivery_slot):
@@ -449,28 +436,62 @@ def get_date_and_time_slot(delivery_slot):
     return target_date_str, time_slot
 
 
-@frappe.whitelist()
-def cancel_place_order(sales_order_name):
+@frappe.whitelist(True)
+def cancel_order(sales_order, session_id=None):
     try:
-        # Fetch the Sales Order
-        sales_order = frappe.get_doc("Sales Order", sales_order_name)
+        # Check if Authorization header is present
+        auth_header = frappe.get_request_header("Authorization", str)
+        if not auth_header:
+            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
 
-        # Check if the Sales Order is already submitted
-        if sales_order.docstatus == 1:
-            # Cancel the Sales Order
-            sales_order.cancel()
+        # Validate authorization via API keys
+        api_keys = auth_header.split(" ")[1:]
+        if not api_keys:
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
 
-        # Fetch the Quotation linked to the Sales Order
-        quotation_name = frappe.db.get_value(
-            "Sales Order", sales_order_name, "quotation"
-        )
+        validate_auth_via_api_keys(api_keys)
+
+        # Check if the user is logged in
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            if session_id is None:
+                frappe.throw("Guest user must provide session ID.", frappe.DataError)
+        
+        # Fetch the sales order document
+        sales_order = frappe.get_doc("Sales Order", sales_order)
+
+        if sales_order.docstatus != 1:  # Check if the Sales Order is submitted
+            frappe.throw("Sales Order is not submitted or already cancelled.")
+
+        # Check if the Sales Order is linked to a Quotation via Sales Order Items
+        quotation_name = sales_order.items[0].prevdoc_docname
+        # for item in sales_order.items:
+        #     if item.get("prevdoc_doctype") == "Quotation" and item.get("prevdoc_docname"):
+        #         quotation_name = item.get("prevdoc_docname")
+        #         break
+
+        # Cancel the Sales Order
+        # Bypass permission checks for cancellation
+        sales_order.flags.ignore_permissions = True
+        sales_order.cancel()
+        
         if quotation_name:
+            # Fetch and cancel the related Quotation
             quotation = frappe.get_doc("Quotation", quotation_name)
-
-            # If the quotation is submitted, set it back to draft
             if quotation.docstatus == 1:
                 quotation.flags.ignore_permissions = True
                 quotation.cancel()
+                frappe.msgprint(f"Related Quotation {quotation_name} has been cancelled.")
+
+            # Create a new Quotation as a draft
+            new_quotation = frappe.copy_doc(quotation)
+            new_quotation.docstatus = 0  # Set as draft
+            apply_cart_settings(quotation=new_quotation)
+            new_quotation.save(ignore_permissions=True)
+            frappe.msgprint(f"A new draft Quotation {new_quotation.name} has been created from the cancelled Quotation.")
+        
 
         # Handle stock reversal (optional, if you had any stock reserved)
         # You might want to restore reserved stock if applicable
@@ -479,10 +500,14 @@ def cancel_place_order(sales_order_name):
         if hasattr(frappe.local, "cookie_manager"):
             frappe.local.cookie_manager.delete_cookie("cart_count")
 
-        frappe.msgprint(_("Order cancellation successful."))
-        return {
+        # If payment is done through Stripe, cancel the Payment Intent
+        if sales_order.custom_payment_method == "card":
+            cancel_stripe_payment_intent(sales_order)
+
+        frappe.local.response["http_status_code"] = HTTPStatus.OK
+        frappe.response["data"] = {
             "status": "success",
-            "message": "Order and quotation have been cancelled.",
+            "message": "Order have been cancelled.",
         }
 
     except Exception as e:
@@ -729,6 +754,8 @@ def _get_cart_quotation(party=None):
             "contact_email": frappe.session.user,
             "order_type": "Shopping Cart",
             "docstatus": 0,
+            # "status": ["in", ["Draft", "Open"]]
+            # "valid_upto": ["in", ["", None, ["gt", frappe.utils.nowdate()]]],
         },
         order_by="modified desc",
         limit_page_length=1,
@@ -2018,7 +2045,7 @@ def update_cart_details(cart, session_id=None):
                 delivery_slot = frappe.get_doc(
                     "Delivery Slot", delivery_option.get("delivery_slot")
                 )
-                quotation.delivery_slot = delivery_slot.name
+                quotation.custom_delivery_slot = delivery_slot.name
             else:
                 delivery_slot = None
 
