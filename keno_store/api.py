@@ -1,4 +1,6 @@
+from datetime import datetime
 import hashlib
+from http import HTTPStatus
 import json
 import uuid
 import frappe
@@ -1390,6 +1392,78 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Unexpected Error in get_items_by_pricing_rule")
         frappe.response["data"] = {"message": "An unexpected error occurred. Please try again later.", "error": str(e)}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def submit_item_review(item_code, review):
+    """
+    Submits a review for an item.
+
+    Args:
+        item_code (str): The code of the item being reviewed.
+        review (dict): The review details containing rating, review_title, and comment.
+    """
+    try:
+        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
+        if frappe.local.session.user == None or frappe.session.user == "Guest":
+            frappe.throw("Please log in to access this feature.") 
+        
+         # Get the current user
+        user = frappe.local.session.user
+
+        # Ensure that rating is within the allowed range (1 to 5 stars)
+        rating = review.get("rating")
+        if rating < 0 or rating >= 5:
+            frappe.throw(_("Rating must be between 0 and 5"), frappe.ValidationError)
+
+        # Check if the item exists
+        if not frappe.db.exists("Item", item_code):
+            frappe.throw(_("Item does not exist"), frappe.DoesNotExistError)
+
+        # Check if the item is listed on the website
+        website_item = frappe.db.get_value("Website Item", {"item_code": item_code}, "name")
+        if not website_item:
+            frappe.throw(_("This item is not listed as a website item."), frappe.DoesNotExistError)
+
+        # Get the current customer (reviewer)
+        customer = frappe.db.get_value("Customer", {"email_id": frappe.session.user}, "name")
+        if not customer:
+            frappe.throw(_("You must be a registered customer to submit a review."), frappe.ValidationError)
+
+        # Create a new Item Review document
+        item_review = frappe.get_doc({
+            "doctype": "Item Review",
+            "item": item_code,
+            "website_item": website_item,
+            "rating": rating,
+            "review_title": review.get("review_title"),
+            "comment": review.get("comment"),
+            "reviewer": user,
+            "customer": customer,  # Set the customer who submitted the review
+            "published_on": datetime.today().strftime("%d %B %Y")  # Set the current datetime for published_on
+        })
+
+        # Save the review
+        item_review.insert()
+        frappe.db.commit()
+
+        frappe.response["data"] = {"message": _("Review submitted successfully"), "review_id": item_review.name}
+
+    except frappe.DoesNotExistError as e:
+        frappe.local.response["http_status_code"] = HTTPStatus.NOT_FOUND
+        frappe.response["data"] = {"message": "Item not found", "error": str(e)}
+
+    except frappe.ValidationError as e:
+        frappe.local.response["http_status_code"] = HTTPStatus.BAD_REQUEST
+        frappe.response["data"] = {"message": "Validation error", "error": str(e)}
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Write Item Review API Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
 
 
 @frappe.whitelist(allow_guest=True)

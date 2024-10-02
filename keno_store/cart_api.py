@@ -342,11 +342,11 @@ def place_order(payment_method, session_id=None):
                 "contact_mobile": quotation.contact_mobile,
                 "ip_address": ip_address,  # Include IP address in metadata
             },
-            # automatic_payment_methods={
-            #     "enabled": True,
-            #     "allow_redirects": "never",  # Prevent redirects
-            # },
-            payment_method_types=["card"],
+            automatic_payment_methods={
+                "enabled": True,
+                "allow_redirects": "never",  # Prevent redirects
+            },
+            # payment_method_types=["card"],
             description=quotation.name + " cart checkout",
             receipt_email=quotation.contact_email,  # Include customer email
             shipping={
