@@ -1501,7 +1501,7 @@ def create_payment_intent(amount, session_id=None, currency=None):
             },
             automatic_payment_methods={
                 "enabled": True,
-                "allow_redirects": "never",  # Prevent redirects
+                "allow_redirects": "always",  # Prevent redirects
             },
             description=description,
             receipt_email=customer_email,  # Include customer email
