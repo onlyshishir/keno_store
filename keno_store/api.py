@@ -6,6 +6,7 @@ import uuid
 import frappe
 from frappe import _
 from frappe.auth import CookieManager, validate_auth_via_api_keys
+from frappe.contacts.doctype.contact.contact import get_contact_name
 from frappe.utils import cint
 from frappe.utils import flt
 import frappe.utils
@@ -1438,14 +1439,29 @@ def submit_item_review(item_code, review):
             "rating": rating,
             "review_title": review.get("review_title"),
             "comment": review.get("comment"),
-            "reviewer": user,
-            "customer": customer,  # Set the customer who submitted the review
+            "user": user,
+            "customer": get_customer(),  # Set the customer who submitted the review
             "published_on": datetime.today().strftime("%d %B %Y")  # Set the current datetime for published_on
         })
 
         # Save the review
         item_review.insert()
         frappe.db.commit()
+
+        # doc = frappe.new_doc("Item Review")
+        # doc.update(
+		# 	{
+		# 		"reviewer": frappe.session.user,
+		# 		"customer": get_customer(),
+        #         "item": item_code,
+		# 		"website_item": website_item,
+		# 		"review_title": review.get("review_title"),
+		# 		"rating": review.get("rating"),
+		# 		"comment": review.get("comment"),
+		# 	}
+		# )
+        # doc.published_on = datetime.today().strftime("%d %B %Y")
+        # doc.save()
 
         frappe.response["data"] = {"message": _("Review submitted successfully"), "review_id": item_review.name}
 
@@ -1658,6 +1674,31 @@ def get_item_groups(limit=None):
         frappe.response["data"] = {
             "error": "An error occurred while fetching item groups."
         }
+
+def get_customer(silent=False):
+	"""
+	silent: Return customer if exists else return nothing. Dont throw error.
+	"""
+	user = frappe.session.user
+	contact_name = get_contact_name(user)
+	customer = None
+
+	if contact_name:
+		contact = frappe.get_doc("Contact", contact_name)
+		for link in contact.links:
+			if link.link_doctype == "Customer":
+				customer = link.link_name
+				break
+
+	if customer:
+		return frappe.db.get_value("Customer", customer)
+	elif silent:
+		return None
+	else:
+		# should not reach here unless via an API
+		frappe.throw(
+			_("You are not a verified customer yet. Please contact us to proceed."), exc=UnverifiedReviewer
+		)
 
 
 @frappe.whitelist(allow_guest=True)
