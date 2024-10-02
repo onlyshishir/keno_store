@@ -1434,23 +1434,26 @@ def submit_item_review(item_code, review):
 
         # add_item_review(website_item, review.get("review_title"), round(float(rating), 2), review.get("comment"))
 
-        # Create a new Item Review document
-        item_review = frappe.get_doc({
-            "doctype": "Item Review",
-            "item": item_code,
-            "website_item": website_item,
-            "rating": rating,
-            "review_title": review.get("review_title"),
-            "comment": review.get("comment"),
-            "user": user,
-            "customer": get_customer(),  # Set the customer who submitted the review
-            "published_on": datetime.today().strftime("%d %B %Y")  # Set the current datetime for published_on
-        })
+        if not frappe.db.exists("Item Review", {"user": frappe.session.user, "website_item": website_item}):
+            # Create a new Item Review document
+            item_review = frappe.get_doc({
+                "doctype": "Item Review",
+                "item": item_code,
+                "website_item": website_item,
+                "rating": rating,
+                "review_title": review.get("review_title"),
+                "comment": review.get("comment"),
+                "user": user,
+                "customer": get_customer(),  # Set the customer who submitted the review
+                "published_on": datetime.today().strftime("%d %B %Y")  # Set the current datetime for published_on
+            })
 
-        # Save the review
-        item_review.save()
-        frappe.db.set_value("Item Review", item_review.name, "rating", rating)
-        frappe.db.commit()
+            # Save the review
+            item_review.save()
+            frappe.db.set_value("Item Review", item_review.name, "rating", rating)
+            frappe.db.commit()
+        else:
+            frappe.throw(_("You have existing review"), frappe.ValidationError)
 
         frappe.response["data"] = {"message": _("Review submitted successfully")}
 
