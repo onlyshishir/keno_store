@@ -10,6 +10,7 @@ from frappe.contacts.doctype.contact.contact import get_contact_name
 from frappe.utils import cint
 from frappe.utils import flt
 import frappe.utils
+from webshop.webshop.doctype.item_review.item_review import add_item_review
 from webshop.webshop.product_data_engine.filters import ProductFiltersBuilder
 from webshop.webshop.product_data_engine.query import ProductQuery
 from webshop.webshop.doctype.override_doctype.item_group import get_child_groups_for_website
@@ -1414,7 +1415,7 @@ def submit_item_review(item_code, review):
 
         # Ensure that rating is within the allowed range (1 to 5 stars)
         rating = review.get("rating")
-        if rating < 0 or rating >= 5:
+        if rating < 0 or rating > 5:
             frappe.throw(_("Rating must be between 0 and 5"), frappe.ValidationError)
 
         # Check if the item exists
@@ -1431,6 +1432,8 @@ def submit_item_review(item_code, review):
         if not customer:
             frappe.throw(_("You must be a registered customer to submit a review."), frappe.ValidationError)
 
+        # add_item_review(website_item, review.get("review_title"), round(float(rating), 2), review.get("comment"))
+
         # Create a new Item Review document
         item_review = frappe.get_doc({
             "doctype": "Item Review",
@@ -1445,25 +1448,11 @@ def submit_item_review(item_code, review):
         })
 
         # Save the review
-        item_review.insert()
+        item_review.save()
+        frappe.db.set_value("Item Review", item_review.name, "rating", rating)
         frappe.db.commit()
 
-        # doc = frappe.new_doc("Item Review")
-        # doc.update(
-		# 	{
-		# 		"reviewer": frappe.session.user,
-		# 		"customer": get_customer(),
-        #         "item": item_code,
-		# 		"website_item": website_item,
-		# 		"review_title": review.get("review_title"),
-		# 		"rating": review.get("rating"),
-		# 		"comment": review.get("comment"),
-		# 	}
-		# )
-        # doc.published_on = datetime.today().strftime("%d %B %Y")
-        # doc.save()
-
-        frappe.response["data"] = {"message": _("Review submitted successfully"), "review_id": item_review.name}
+        frappe.response["data"] = {"message": _("Review submitted successfully")}
 
     except frappe.DoesNotExistError as e:
         frappe.local.response["http_status_code"] = HTTPStatus.NOT_FOUND
