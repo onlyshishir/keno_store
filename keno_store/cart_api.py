@@ -344,7 +344,6 @@ def place_order(payment_method, session_id=None):
             },
             automatic_payment_methods={
                 "enabled": True,
-                "allow_redirects": "never",  # Prevent redirects
             },
             # payment_method_types=["card"],
             description=quotation.name + " cart checkout",
