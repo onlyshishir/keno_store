@@ -1721,6 +1721,79 @@ def generate_session_id():
     }
 
 
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def get_coverage_area_info():
+    try:
+        # Pickup Locations
+        pickup_locations = [
+            {
+                "address": "87-55 168 PL, Jamaica, NY 11432",
+                "hours": "11AM - 1:30AM (Night)",
+                "days": "7 Days a week"
+            },
+            {
+                "address": "255-12 Hillside Ave, Queens, NY 11004",
+                "hours": "10AM - 6:00PM",
+                "days": "Monday-Thursday"
+            },
+            {
+                "address": "105-07 150th ST Jamaica, NY 11435",
+                "hours": "10AM - 6:00PM",
+                "days": "Monday-Saturday"
+            }
+        ]
+
+        # Home Delivery Info
+        home_delivery = {
+            "same_day_delivery": [
+                {
+                    "range": "$500 and up",
+                    "delivery_charge": "Free",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                },
+                {
+                    "range": "$200-$499",
+                    "delivery_charge": "$10",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                },
+                {
+                    "range": "Below $200",
+                    "delivery_charge": "$15",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                }
+            ],
+            "next_day_delivery": [
+                {
+                    "range": "$500 and up",
+                    "delivery_charge": "Free",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                },
+                {
+                    "range": "$200 and up",
+                    "delivery_charge": "$5",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                },
+                {
+                    "range": "Below $200",
+                    "delivery_charge": "$10",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                }
+            ]
+        }
+
+        # Return API Response
+        frappe.response["data"] = {
+            "status": "success",
+            "pickup_locations": pickup_locations,
+            "home_delivery": home_delivery
+        }
+    
+    except Exception as e:
+        # Log error for debugging
+        frappe.log_error(frappe.get_traceback(), "Failed to retrieve delivery info")
+        frappe.throw(_("An error occurred while fetching delivery information."))
+
+
 @frappe.whitelist(allow_guest=True)
 def download_app():
     user_agent = frappe.request.headers.get('User-Agent')
