@@ -5,6 +5,7 @@ from http import HTTPStatus
 import frappe
 from frappe.auth import validate_auth_via_api_keys
 from frappe.model.docstatus import DocStatus
+import requests
 import stripe
 import frappe.defaults
 from frappe import _, throw
@@ -218,7 +219,7 @@ def get_billing_addresses(party=None):
 
 
 @frappe.whitelist(True)
-def place_order(payment_method, session_id=None):
+def place_order_old(payment_method, session_id=None):
     try:
         # Check if Authorization header is present
         auth_header = frappe.get_request_header("Authorization", str)
@@ -1369,9 +1370,8 @@ def get_stripe_keys():
 
 
 @frappe.whitelist(allow_guest=True)
-def create_payment_intent(amount, session_id=None, currency=None):
+def place_order(payment_method, session_id=None):
     stripe_keys = get_stripe_keys()
-    currency = currency or "USD"
 
     try:
         # Check if Authorization header is present
@@ -1393,6 +1393,14 @@ def create_payment_intent(amount, session_id=None, currency=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
+        
+        # Define the allowed payment methods
+        allowed_payment_methods = ["card", "google_pay", "apple_pay", "paypal"]
+
+        # Check if the payment method is valid
+        if payment_method not in allowed_payment_methods:
+            # Throw an exception if the payment method is invalid
+            frappe.throw(f"Invalid payment method: {payment_method}. Allowed methods are: {', '.join(allowed_payment_methods)}.", frappe.ValidationError)
 
         # Get the party (customer)
         party = get_party()
@@ -1407,21 +1415,23 @@ def create_payment_intent(amount, session_id=None, currency=None):
             if quotation:
                 quotation = frappe.get_doc("Quotation", quotation[0].name)
             else:
-                frappe.throw("Cart is emplty!!", frappe.ValidationError)
+                frappe.throw("Cart is empty!", frappe.ValidationError)
         else:
             quotation = _get_cart_quotation(party)
 
         # Check if there are no items in the quotation
         if not quotation.items or len(quotation.items) == 0:
-            frappe.throw("Cart is emplty!!", frappe.ValidationError)
+            frappe.throw("Cart is empty!", frappe.ValidationError)
+
+        # quotation = _get_cart_quotation()
+        cart_settings = frappe.get_cached_doc("Webshop Settings")
+        quotation.company = cart_settings.company
+        
+        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.custom_delivery_slot) :
+            frappe.throw("Cart is not ready to place order", frappe.ValidationError)
 
         # Validate the amount with quotation's total amount
         quotation_total = float(quotation.rounded_total or quotation.grand_total)
-        if float(amount) != quotation_total:
-            frappe.throw(
-                f"Amount mismatch! Quotation total: {quotation_total}, Provided amount: {amount}",
-                frappe.ValidationError,
-            )
 
         # Extract details from the quotation
         description = quotation.name
@@ -1487,20 +1497,30 @@ def create_payment_intent(amount, session_id=None, currency=None):
         ) or frappe.request.headers.get("Remote-Addr")
 
         # Create a Stripe PaymentIntent
-        amount_in_cents = int(float(amount) * 100)
-        intent = stripe.PaymentIntent.create(
+        amount_in_cents = int(float(quotation_total) * 100)
+
+        # search for existing payment_intent
+        payment_intent = search_payment_intent(quotation.name, quotation.contact_display)
+
+        if payment_intent:
+            if payment_intent.get("amount") != amount_in_cents:
+                update_payment_intent(payment_intent.get("id"), payment_intent.get("metadata"), amount_in_cents)
+
+        else:
+            payment_intent = stripe.PaymentIntent.create(
             amount=amount_in_cents,
-            currency=currency,
+            currency=quotation.currency,
             metadata={
                 "integration_check": "accept_a_payment",
                 "quotation_id": quotation.name,
-                "customer_id": quotation.party_name,
-                "custom_field": "some value",  # Add other custom data as needed
+                "customer_id": quotation.contact_display,
+                "session_id": quotation.custom_session_id,
+                "customer_email": quotation.contact_email,
+                "payment_method": payment_method,
                 "ip_address": ip_address,  # Include IP address in metadata
             },
             automatic_payment_methods={
                 "enabled": True,
-                "allow_redirects": "always",  # Prevent redirects
             },
             description=description,
             receipt_email=customer_email,  # Include customer email
@@ -1517,8 +1537,9 @@ def create_payment_intent(amount, session_id=None, currency=None):
             },
         )
         frappe.response["data"] = {
-            "id": intent["id"],
-            "client_secret": intent["client_secret"],
+            "status": "success",
+            "intent_id": payment_intent["id"],
+            "client_secret": payment_intent["client_secret"],
         }
     except stripe.error.StripeError as e:
         frappe.throw(_("Error creating payment intent: {0}").format(e.user_message))
@@ -1531,6 +1552,85 @@ def create_payment_intent(amount, session_id=None, currency=None):
             "message": "An error occurred while creating the payment intent.",
             "error": str(e),
         }
+
+
+def search_payment_intent(quotation_id=None, customer_id=None):
+    try:
+        # Create the query string based on metadata and status
+        query_parts = []
+        if quotation_id:
+            query_parts.append(f"metadata['quotation_id']:'{quotation_id}'")
+        if customer_id:
+            query_parts.append(f"metadata['customer_id']:'{customer_id}'")
+        
+        query = " AND ".join(query_parts)
+        
+        # Add status 'incomplete' filter
+        query += " AND status:'requires_payment_method'"
+        
+        # # Search for payment intents
+        # payment_intents = stripe.PaymentIntent.search(
+        #     query=query,
+        #     limit=1  # Limit the number of results, can be adjusted as needed
+        # )
+        
+        # Return the result
+        # return payment_intents[0]
+        return search_payment_intent_raw(query)
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+    
+
+def search_payment_intent_raw(query):
+    stripe_keys = get_stripe_keys()
+    url = 'https://api.stripe.com/v1/payment_intents/search'
+    headers = {
+        'Authorization': f'Bearer {stripe_keys.get("secret_key")}',
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    params = {
+        'query': query  # This is your search query string
+    }
+
+    try:
+        # Make the request
+        response = requests.get(url, headers=headers, params=params)
+        
+        # Raise an error if the request failed
+        response.raise_for_status()
+
+        # Parse the response data
+        data = response.json()
+
+        # Return the first payment intent if it exists
+        if data and 'data' in data and len(data['data']) > 0:
+            return data['data'][0]
+        else:
+            print("No payment intents found.")
+            return None
+
+    except requests.exceptions.HTTPError as err:
+        print(f"HTTP error occurred: {err}")
+        return None
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+        return None
+
+
+def update_payment_intent(payment_intent_id, metadata=None, amount=None):
+    try:
+        # Update the payment intent
+        updated_payment_intent = stripe.PaymentIntent.modify(
+            payment_intent_id,
+            metadata=metadata,  # You can add or update metadata here
+            amount=amount  # Optional: update amount (if needed)
+        )
+        return updated_payment_intent
+    except stripe.error.StripeError as e:
+        print(f"Error updating payment intent: {e}")
+        return None
 
 
 @frappe.whitelist(allow_guest=True)
@@ -1566,11 +1666,13 @@ def stripe_webhook():
     try:
         if event["type"] == "payment_intent.succeeded":
             payment_intent = event["data"]["object"]
-            sales_order_name = payment_intent["metadata"].get("sales_order")
+            # sales_order_name = payment_intent["metadata"].get("sales_order")
+            quotation_name = payment_intent["metadata"].get("quotation_id")
+            payment_method = payment_intent["metadata"].get("payment_method")
 
-            if sales_order_name:
+            if quotation_name:
                 # Proceed with order placement and payment handling
-                process_order_after_payment_success(sales_order_name, payment_intent)
+                process_order_after_payment_success(quotation_name, payment_intent, payment_method)
             else:
                 frappe.log_error(
                     "sales order name is missing in payment intent metadata",
@@ -1589,9 +1691,66 @@ def stripe_webhook():
     return {"status": "success"}, 200  # Return JSON response with status code 200
 
 
-def process_order_after_payment_success(sales_order_name, payment_intent):
+def process_order_after_payment_success(quotation_name, payment_intent, payment_method):
     try:
-        sales_order = frappe.get_doc("Sales Order", sales_order_name)
+        # sales_order = frappe.get_doc("Sales Order", sales_order_name)
+        quotation = frappe.get_doc("Quotation", quotation_name)
+
+        cart_settings = frappe.get_cached_doc("Webshop Settings")
+        quotation.company = cart_settings.company
+
+        delivery_slot = frappe.get_doc(
+            "Delivery Slot", quotation.custom_delivery_slot
+        )
+
+        quotation.flags.ignore_permissions = True
+        quotation.submit()
+
+        if quotation.quotation_to == "Lead" and quotation.party_name:
+            # company used to create customer accounts
+            frappe.defaults.set_user_default("company", quotation.company)
+
+        customer_group = cart_settings.default_customer_group
+
+        sales_order = frappe.get_doc(
+            _make_sales_order(
+                quotation.name, customer_group=customer_group, ignore_permissions=True
+            )
+        )
+        sales_order.payment_schedule = []
+
+        if not cint(cart_settings.allow_items_not_in_stock):
+            for item in sales_order.get("items"):
+                item.warehouse = frappe.db.get_value(
+                    "Website Item", {"item_code": item.item_code}, "website_warehouse"
+                )
+                is_stock_item = frappe.db.get_value(
+                    "Item", item.item_code, "is_stock_item"
+                )
+
+                if is_stock_item:
+                    item_stock = get_web_item_qty_in_stock(
+                        item.item_code, "website_warehouse"
+                    )
+                    if not cint(item_stock.in_stock):
+                        throw(_("{0} Not in Stock").format(item.item_code))
+                    if item.qty > item_stock.stock_qty:
+                        throw(
+                            _("Only {0} in Stock for item {1}").format(
+                                item_stock.stock_qty, item.item_code
+                            )
+                        )
+        # Adding Delivery Method, Delivery Date And Delivery Slots data
+        sales_order.custom_delivery_method = quotation.custom_delivery_method
+        if quotation.custom_delivery_slot:
+            sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
+        
+        sales_order.custom_payment_method=payment_method
+
+        sales_order.custom_payment_reference=payment_intent.id
+        sales_order.flags.ignore_permissions = True
+        sales_order.save()
+        sales_order.submit()
 
         # Create Sales Invoice for the Sales Order
         # sales_invoice = create_sales_invoice(sales_order)
