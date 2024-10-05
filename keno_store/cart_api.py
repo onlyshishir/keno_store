@@ -1361,10 +1361,10 @@ def get_stripe_keys():
             _("Stripe Secret Key is missing. Please configure Stripe Settings.")
         )
 
-    stripe.api_key = "sk_test_51PwbrnL4D2RC6HamhurG39M6RabDtNdclW6Dck1XfQNRW9nRvpzFVRbUPRHuJI8jLdFq6LU3KgxqptowOpTOi9k900lobJLSKG"
+    stripe.api_key = stripe_settings.get_password(fieldname="secret_key", raise_exception=False)
     return {
-        "secret_key": "sk_test_51PwbrnL4D2RC6HamhurG39M6RabDtNdclW6Dck1XfQNRW9nRvpzFVRbUPRHuJI8jLdFq6LU3KgxqptowOpTOi9k900lobJLSKG",
-        "publishable_key": "pk_test_51PwbrnL4D2RC6HamNXLDlOjuq0aleVfya1YLFP7eulVMuQzuXd7VyRVF3qpBlRRofaztefhaxuI8pH17s9mpCP3200i02sPklq",
+        "secret_key": stripe_settings.get_password(fieldname="secret_key", raise_exception=False),
+        "publishable_key": stripe_settings.publishable_key,
         "redirect_url": stripe_settings.redirect_url,
     }
 
