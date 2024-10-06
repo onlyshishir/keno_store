@@ -584,7 +584,7 @@ def search(query=None, page=1, page_size=10):
         total_items = frappe.db.count(
             "Item",
             filters={
-                "item_name": ["like", "%{query}%"],
+                "item_name": ["like", f"%{query}%"],
                 "disabled": 0,
                 "published_in_website": 1 
             }
