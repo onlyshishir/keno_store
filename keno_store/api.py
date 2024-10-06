@@ -473,19 +473,157 @@ def get_stock_availability(item):
     #     # stock item and has warehouse
     #     item_details.is_in_stock = get_stock_availability_from_template(item_details.item_code, warehouse)
 
-@frappe.whitelist(allow_guest=True)
-def search(query=None):
-    from webshop.templates.pages.product_search import (
-        product_search as product_search_from_template,
-        get_category_suggestions as get_category_suggestions_from_template
-    )
-    product_results = product_search_from_template(query)
-    category_results = get_category_suggestions_from_template(query)
+# @frappe.whitelist(allow_guest=True)
+# def search(query=None):
+#     from webshop.templates.pages.product_search import (
+#         product_search as product_search_from_template,
+#         get_category_suggestions as get_category_suggestions_from_template
+#     )
+#     product_results = product_search_from_template(query)
+#     category_results = get_category_suggestions_from_template(query)
     
-    return {
-		"product_results": product_results.get("results") or [],
-		"category_results": category_results.get("results") or [],
-	}
+#     return {
+# 		"product_results": product_results.get("results") or [],
+# 		"category_results": category_results.get("results") or [],
+# 	}
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def search(query=None, page=1, page_size=10):
+    try:
+        # Validate Authorization header
+        auth_header = frappe.get_request_header("Authorization", str)
+        if not auth_header:
+            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
+        
+        # Validate API key authorization
+        api_keys = auth_header.split(" ")[1:]
+        if not api_keys:
+            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+
+        validate_auth_via_api_keys(api_keys)
+        
+        # Validate and parse page and page_size
+        try:
+            page = int(page)
+            page_size = int(page_size)
+            if page <= 0 or page_size <= 0:
+                raise ValueError("Page and page size must be positive integers")
+        except ValueError as e:
+            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+
+        # Calculate offset and limit for pagination
+        offset = (page - 1) * page_size
+        limit = page_size
+        items = frappe.get_all(
+            "Item",
+            filters={
+                "item_name": ["like", f"%{query}%"],
+                "disabled": 0,                # Assuming this field indicates if the item is active
+                "published_in_website": 1              # Assuming this field indicates if the item is published
+            },
+            fields=["item_code"],
+            limit_start=offset,
+            limit_page_length=limit
+        )
+
+        item_codes = [item["item_code"] for item in items]
+
+        # Fetch website items corresponding to the top-selling item codes
+        searched_items = frappe.get_all(
+            "Website Item",
+            filters={"item_code": ["in", item_codes], "published": 1},
+            fields=[
+                "web_item_name", 
+                "name", 
+                "item_code", 
+                "website_image", 
+                "variant_of", 
+                "has_variants", 
+                "item_group", 
+                "short_description", 
+                "ranking",
+            ]
+        )
+
+        for item in searched_items:
+            try:
+                # Get stock quantity
+                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                item["stock_qty"] = stock_qty if stock_qty else 0
+
+                # Get product pricing information
+                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                if product_info and product_info["price"]:
+                    item.update({
+                        "currency": product_info["price"].get("currency"),
+                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                        "formatted_price": product_info["price"].get("formatted_price")
+                    })
+                    if product_info["price"].get("discount_percent"):
+                        item.update({
+                            "discount_percent": flt(product_info["price"].get("discount_percent")),
+                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
+                        })
+            except Exception as e:
+                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+
+            try:
+                # Get item rating
+                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                if ratings:
+                    total_rating = sum([r["rating"] for r in ratings])
+                    average_rating = total_rating / len(ratings)
+                    item["rating"] = round(average_rating, 1)
+                else:
+                    item["rating"] = 0  # No ratings, default to 0
+            except Exception as e:
+                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                item["rating"] = 0  # Default rating if fetching fails
+
+        # Determine total items and total pages for pagination
+        total_items = frappe.db.count(
+            "Item",
+            filters={
+                "item_name": ["like", "%{query}%"],
+                "disabled": 0,
+                "published_in_website": 1 
+            }
+        )
+
+        total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
+
+        # Return the response with pagination details
+        frappe.response["data"] = {
+            "status": "success",
+            "items": searched_items,
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+            },
+        }
+    
+    except frappe.AuthenticationError:
+        frappe.local.response["http_status_code"] = 401
+        frappe.response["data"] = {
+            "status": "error",
+            "message": "Unauthorized access. Invalid or missing API key."
+        }
+    except frappe.ValidationError as e:
+        frappe.local.response["http_status_code"] = 400
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+    except Exception as e:
+        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Top Selling Product API")
+        frappe.local.response["http_status_code"] = 500
+        frappe.response["data"] = {
+            "status": "error",
+            "message": "An unexpected error occurred. Please try again later."
+        }
+
 
 @frappe.whitelist(allow_guest=True)
 def get_new_website_items(limit=10, price_list="Standard Selling"):
