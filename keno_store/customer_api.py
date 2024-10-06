@@ -330,6 +330,9 @@ def manage_customer_profile(profile=None):
                 shipping_address_doc.save(ignore_permissions=True)
                 # shipping_address_doc.submit() 
 
+            frappe.db.set_value("Customer", customer_doc.name, "mobile_no", mobile_no)
+            frappe.db.commit()
+
             # Return success response
             frappe.response["data"] = {"status": "success", "message": "Profile updated successfully."}
 

@@ -51,8 +51,31 @@ def get_user_details(user):
             "user_image",
         ],
     )
+
+    if user_details and user_details[0].get("role_profile_name") == 'Customer':
+        user_email = user_details[0].get("email")
+
+        # Fetch the contact based on the email
+        contact_name = frappe.get_all("Contact Email", filters={"email_id": user_email}, fields=["parent"], limit=1)
+        customer = None
+
+        # If a contact is found, retrieve the linked customer
+        if contact_name:
+            contact = frappe.get_doc("Contact", contact_name[0].parent)  # Access the 'parent' field
+            for link in contact.links:
+                if link.link_doctype == "Customer":
+                    customer = link.link_name
+                    break
+
+        # If a customer is found, retrieve the primary address
+        if customer:
+            address = frappe.db.get_value("Customer", customer, "primary_address")
+            user_details[0]["address"] = address  # Add address to the user details
+
     if user_details:
-        return user_details
+        return user_details  # Return the first element (user details with address if applicable)
+    else:
+        return None
 
 
 @frappe.whitelist(True)
