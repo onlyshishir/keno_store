@@ -1,10 +1,12 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
+import calendar
 from http import HTTPStatus
 import frappe
 from frappe.auth import validate_auth_via_api_keys
 from frappe.model.docstatus import DocStatus
+from frappe.utils.data import add_days, getdate, now, today
 import requests
 import stripe
 import frappe.defaults
@@ -2300,3 +2302,94 @@ def get_pickup_store():
             "message": "There was an error processing the request."
         }
 
+@frappe.whitelist(allow_guest=True, methods="GET")
+def get_delivery_slot(delivery_type=None):
+    try:
+        # Check if Authorization header is present
+        auth_header = frappe.get_request_header("Authorization", str)
+        if not auth_header:
+            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
+
+        # Validate authorization via API keys
+        api_keys = auth_header.split(" ")[1:]
+        if not api_keys:
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
+
+        # Call the custom validation function for API keys
+        validate_auth_via_api_keys(api_keys)
+
+        # Define the allowed delivery types
+        allowed_delivery_type = ["Express Delivery", "Normal Delivery"]
+
+        # Check if the delivery type is valid
+        if delivery_type not in allowed_delivery_type:
+            frappe.throw("Delivery type not supported", frappe.ValidationError)
+        
+        if delivery_type == "Express Delivery":
+            day_name = get_day_name(today())
+            current_time = now()  # Get the current time for filtering Express Delivery slots
+        else:
+            day_name = get_day_name(add_days(today(), 1))
+            current_time = None  # No need to filter based on current time for Normal Delivery
+
+        # Build filters for the delivery slots query
+        filters = {
+            "parent": "Zone 1",
+            "day": day_name
+        }
+
+        # If it's Express Delivery, filter slots with start_time greater than the current time
+        if delivery_type == "Express Delivery":
+            delivery_slots = frappe.db.sql("""
+                SELECT name, day, start_time, end_time
+                FROM `tabDelivery Slot`
+                WHERE parent = %s
+                AND day = %s
+                AND start_time > %s
+            """, ("Zone 1", day_name, current_time), as_dict=True)
+        else:
+            # For Normal Delivery, no need to filter by start_time
+            delivery_slots = frappe.get_all(
+                "Delivery Slot",
+                filters=filters,
+                fields=["name", "day", "start_time", "end_time"]
+            )
+
+        # Return the list of delivery slots
+        frappe.local.response["http_status_code"] = HTTPStatus.OK
+        frappe.response["data"] = {
+            "status": "success",
+            "delivery_slots": delivery_slots
+        }
+
+    except frappe.AuthenticationError as e:
+        frappe.local.response["http_status_code"] = HTTPStatus.UNAUTHORIZED
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+
+    except frappe.PermissionError as e:
+        frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Error in get_delivery_slot API")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+def get_day_name(date_str):
+    # Convert date string to a datetime object
+    date_obj = getdate(date_str)
+    # Get the day name
+    return calendar.day_name[date_obj.weekday()]
