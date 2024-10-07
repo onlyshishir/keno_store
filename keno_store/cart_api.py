@@ -1091,7 +1091,10 @@ def _apply_shipping_rule(party=None, quotation=None, cart_settings=None):
                 frappe.throw(_("Store Pickup shipping rule does not exist."))
         elif quotation.custom_delivery_method == 'Home Delivery':
             try:
-                shipping_rules = [frappe.get_doc("Shipping Rule", "Fixed delivery rate").name]
+                if quotation.custom_delivery_type == 'Express Delivery':
+                    shipping_rules = [frappe.get_doc("Shipping Rule", "Express Delivery").name]
+                else:
+                    shipping_rules = [frappe.get_doc("Shipping Rule", "Normal Delivery").name]
 
             except frappe.DoesNotExistError:
                 frappe.throw(_("Store Pickup shipping rule does not exist."))
@@ -1542,6 +1545,7 @@ def place_order(payment_method, session_id=None):
             "status": "success",
             "intent_id": payment_intent["id"],
             "client_secret": payment_intent["client_secret"],
+            "quotation_name": quotation.name
         }
     except stripe.error.StripeError as e:
         frappe.throw(_("Error creating payment intent: {0}").format(e.user_message))
@@ -2204,6 +2208,11 @@ def update_cart_details(cart, session_id=None):
         if delivery_option:
             if delivery_option.get("delivery_method"):
                 quotation.custom_delivery_method = delivery_option.get("delivery_method")
+                if(delivery_option.get("delivery_method") == "Home Delivery" and delivery_option.get("delivery_type")):
+                    quotation.custom_delivery_type = delivery_option.get("delivery_type")
+                elif(delivery_option.get("delivery_method") == "Store Pickup" and delivery_option.get("store")):
+                    quotation.custom_pickup_store = delivery_option.get("store")
+                    quotation.custom_store_pickup_datetime = delivery_option.get("store_pickup_time")
             if delivery_option.get("delivery_slot"):
                 delivery_slot = frappe.get_doc(
                     "Delivery Slot", delivery_option.get("delivery_slot")
