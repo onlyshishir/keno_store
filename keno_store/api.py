@@ -557,7 +557,8 @@ def search(query=None, page=1, page_size=10):
                     item.update({
                         "currency": product_info["price"].get("currency"),
                         "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price")
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate")
                     })
                     if product_info["price"].get("discount_percent"):
                         item.update({
@@ -909,7 +910,8 @@ def get_top_selling_products(period="last_month", page=1, page_size=10):
                     item.update({
                         "currency": product_info["price"].get("currency"),
                         "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price")
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate")
                     })
                     if product_info["price"].get("discount_percent"):
                         item.update({
@@ -1080,7 +1082,8 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
                     item.update({
                         "currency": product_info["price"].get("currency"),
                         "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price")
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate")
                     })
                     if product_info["price"].get("discount_percent"):
                         item.update({
@@ -1343,7 +1346,8 @@ def get_offer_items(offer_title, page=1, page_size=10):
                     item.update({
                         "currency": product_info["price"].get("currency"),
                         "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price")
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate")
                     })
                     if product_info["price"].get("discount_percent"):
                         item.update({

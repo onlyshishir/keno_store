@@ -69,8 +69,18 @@ def get_user_details(user):
 
         # If a customer is found, retrieve the primary address
         if customer:
-            address = frappe.db.get_value("Customer", customer, "primary_address")
-            user_details[0]["address"] = address  # Add address to the user details
+            # address = frappe.db.get_value("Customer", customer, "primary_address")
+            address = frappe.db.get_value("Customer", customer, "customer_primary_address")
+            address_doc = frappe.get_doc("Address", address)
+            address = {
+                "address_line1": address_doc.address_line1,
+                "address_line2": address_doc.address_line2,
+                "city": address_doc.city,
+                "state": address_doc.state,
+                "pincode": address_doc.pincode,
+                "country": address_doc.country
+            }
+            user_details[0]["address"] = address;  # Add address to the user details
 
     if user_details:
         return user_details  # Return the first element (user details with address if applicable)
@@ -81,33 +91,48 @@ def get_user_details(user):
 @frappe.whitelist(True)
 def get_user_info():
     try:
-        # Get Authorization header
-        auth_header = frappe.get_request_header("Authorization", str).split(" ")
-
-        if len(auth_header) != 3 or auth_header[1].lower() != "token":
-            return {"status": "error", "message": ("Invalid Authorization header")}
-
-        # Extract api_key and api_secret
-        api_key, api_secret = auth_header[2].split(":")
-
-        # Validate API key and secret
-        user = frappe.db.get_value("User", {"api_key": api_key}, "name")
-        if not user:
-            return {"status": "error", "message": ("Invalid API Key")}
-
-        # Check if API secret matches
-        api_secret_stored = frappe.db.get_value(
-            "User", {"api_key": api_key}, "api_secret"
+        # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
         )
-        if frappe.utils.password.check_password(api_secret_stored, api_secret):
-            user_info = frappe.get_doc("User", user).as_dict()
 
-            # Remove sensitive fields from the response
-            user_info.pop("api_key", None)
-            user_info.pop("api_secret", None)
-            return {"status": "success", "user": user_info}
+        # Get the current user
+        user = frappe.local.session.user
 
-        return {"status": "error", "message": ("Invalid API Secret")}
+        if frappe.local.session.user == None or frappe.session.user == "Guest":
+            frappe.throw(
+                "Please log in to access this feature.", frappe.PermissionError
+            )
+        # # Get Authorization header
+        # auth_header = frappe.get_request_header("Authorization", str).split(" ")
+
+        # if len(auth_header) != 3 or auth_header[1].lower() != "token":
+        #     return {"status": "error", "message": ("Invalid Authorization header")}
+
+        # # Extract api_key and api_secret
+        # api_key, api_secret = auth_header[2].split(":")
+
+        # # Validate API key and secret
+        # user = frappe.db.get_value("User", {"api_key": api_key}, "name")
+        # if not user:
+        #     return {"status": "error", "message": ("Invalid API Key")}
+
+        # # Check if API secret matches
+        # api_secret_stored = frappe.db.get_value(
+        #     "User", {"api_key": api_key}, "api_secret"
+        # )
+        # if frappe.utils.password.check_password(api_secret_stored, api_secret):
+        #     user_info = frappe.get_doc("User", user).as_dict()
+
+        #     # Remove sensitive fields from the response
+        #     user_info.pop("api_key", None)
+        #     user_info.pop("api_secret", None)
+        #     return {"status": "success", "user": user_info}
+
+        # return {"status": "error", "message": ("Invalid API Secret")}
+        frappe.response["sid"] = frappe.session.sid
+        frappe.response["token"] = generate_token(user)
+        frappe.response["user_details"] = get_user_details(user)
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "get_user_info")

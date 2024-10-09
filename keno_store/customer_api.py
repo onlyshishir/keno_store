@@ -16,7 +16,9 @@ def update_user_email(new_email):
         )
 
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("Please log in to access this feature.", frappe.PermissionError) 
+            frappe.throw(
+                "Please log in to access this feature.", frappe.PermissionError
+            )
 
         # Get the current user
         user = frappe.local.session.user
@@ -122,7 +124,9 @@ def get_own_customer_profile():
         user = frappe.local.session.user
 
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("Please log in to access this feature.", frappe.PermissionError) 
+            frappe.throw(
+                "Please log in to access this feature.", frappe.PermissionError
+            )
 
         # Ensure the user is not a guest
         if user == "Guest":
@@ -134,7 +138,13 @@ def get_own_customer_profile():
         customer = frappe.db.get_value(
             "Customer",
             {"email_id": user},
-            ["name", "customer_name", "mobile_no", "email_id", "customer_primary_address"],
+            [
+                "name",
+                "customer_name",
+                "mobile_no",
+                "email_id",
+                "customer_primary_address",
+            ],
             as_dict=True,
         )
 
@@ -148,7 +158,14 @@ def get_own_customer_profile():
         address_list = frappe.get_all(
             "Address",
             filters={"name": customer["customer_primary_address"]},
-            fields=["address_line1", "address_line2", "city", "state", "pincode", "country"],
+            fields=[
+                "address_line1",
+                "address_line2",
+                "city",
+                "state",
+                "pincode",
+                "country",
+            ],
             limit=1,
         )
 
@@ -212,25 +229,44 @@ def manage_customer_profile(profile=None):
         user = frappe.local.session.user
 
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("You need to be logged in to view or update your profile.", frappe.PermissionError)
+            frappe.throw(
+                "You need to be logged in to view or update your profile.",
+                frappe.PermissionError,
+            )
 
         if frappe.request.method == "GET":
             # Fetch the customer linked with the logged-in user's email
             customer = frappe.db.get_value(
                 "Customer",
                 {"email_id": user},
-                ["name", "customer_name", "mobile_no", "email_id", "customer_primary_address"],
+                [
+                    "name",
+                    "customer_name",
+                    "mobile_no",
+                    "email_id",
+                    "customer_primary_address",
+                ],
                 as_dict=True,
             )
 
             if not customer:
-                frappe.throw("Customer profile not found for this user.", frappe.DoesNotExistError)
+                frappe.throw(
+                    "Customer profile not found for this user.",
+                    frappe.DoesNotExistError,
+                )
 
             # Fetch customer's primary address
             address_list = frappe.get_all(
                 "Address",
                 filters={"name": customer["customer_primary_address"]},
-                fields=["address_line1", "address_line2", "city", "state", "pincode", "country"],
+                fields=[
+                    "address_line1",
+                    "address_line2",
+                    "city",
+                    "state",
+                    "pincode",
+                    "country",
+                ],
                 limit=1,
             )
 
@@ -259,7 +295,9 @@ def manage_customer_profile(profile=None):
             profile_data = frappe.local.form_dict.get("profile", {})
 
             if not profile_data:
-                frappe.throw("No profile data provided for update.", frappe.ValidationError)
+                frappe.throw(
+                    "No profile data provided for update.", frappe.ValidationError
+                )
 
             first_name = profile_data.get("first_name")
             last_name = profile_data.get("last_name")
@@ -270,12 +308,18 @@ def manage_customer_profile(profile=None):
 
             # Update Customer details
             if not first_name or not last_name or not email:
-                frappe.throw("First name, last name, and email are required.", frappe.ValidationError)
+                frappe.throw(
+                    "First name, last name, and email are required.",
+                    frappe.ValidationError,
+                )
 
             customer_name = f"{first_name} {last_name}"
             customer_doc = frappe.get_doc("Customer", {"email_id": email})
             if not customer_doc:
-                frappe.throw("Customer profile not found for this email.", frappe.DoesNotExistError)
+                frappe.throw(
+                    "Customer profile not found for this email.",
+                    frappe.DoesNotExistError,
+                )
 
             customer_doc.customer_name = customer_name
             customer_doc.mobile_no = mobile_no
@@ -284,7 +328,11 @@ def manage_customer_profile(profile=None):
 
             # Update or create the Billing Address document
             if billing_address:
-                billing_address_doc = frappe.get_doc("Address", customer_doc.customer_primary_address) if customer_doc.customer_primary_address else frappe.new_doc("Address")
+                billing_address_doc = (
+                    frappe.get_doc("Address", customer_doc.customer_primary_address)
+                    if customer_doc.customer_primary_address
+                    else frappe.new_doc("Address")
+                )
                 billing_address_doc.address_title = billing_address.get("address_line1")
                 billing_address_doc.address_line1 = billing_address.get("address_line1")
                 billing_address_doc.address_line2 = billing_address.get("address_line2")
@@ -292,49 +340,67 @@ def manage_customer_profile(profile=None):
                 billing_address_doc.state = billing_address.get("state")
                 billing_address_doc.pincode = billing_address.get("pincode")
                 billing_address_doc.country = billing_address.get("country")
-                billing_address_doc.address_type = 'Billing'
-                billing_address_doc.owner= user
+                billing_address_doc.address_type = "Billing"
+                billing_address_doc.owner = user
                 billing_address_doc.is_primary_address = True
                 billing_address_doc.save(ignore_permissions=True)
 
                 customer_doc = frappe.get_doc("Customer", {"email_id": email})
                 customer_doc.customer_primary_address = billing_address_doc.name
                 customer_doc.save(ignore_permissions=True)
-                
 
             if shipping_address:
                 shipping_address_doc = frappe.db.get_value(
                     "Address",
                     {"owner": user, "is_shipping_address": 1, "disabled": 0},
-                    ["name", "address_line1", "address_line2", "city", "state", "country", "pincode"],
-                    as_dict=True
+                    [
+                        "name",
+                        "address_line1",
+                        "address_line2",
+                        "city",
+                        "state",
+                        "country",
+                        "pincode",
+                    ],
+                    as_dict=True,
                 )
                 if not shipping_address_doc:
                     shipping_address_doc = frappe.new_doc("Address")
                 else:
-                    shipping_address_doc = frappe.get_doc("Address", shipping_address_doc.name)
+                    shipping_address_doc = frappe.get_doc(
+                        "Address", shipping_address_doc.name
+                    )
                     # shipping_address_doc.address_title = shipping_address.get("address_line1")
                 #     shipping_address_doc.address_title = customer_doc.customer_name + " - Shipping Address"
                 # if shipping_address_doc.address_title is None:
                 #     shipping_address_doc.address_title = customer_doc.customer_name + " - Shipping Address"
-                shipping_address_doc.address_title = shipping_address.get("address_line1")
-                shipping_address_doc.address_line1 = shipping_address.get("address_line1")
-                shipping_address_doc.address_line2 = shipping_address.get("address_line2")
+                shipping_address_doc.address_title = shipping_address.get(
+                    "address_line1"
+                )
+                shipping_address_doc.address_line1 = shipping_address.get(
+                    "address_line1"
+                )
+                shipping_address_doc.address_line2 = shipping_address.get(
+                    "address_line2"
+                )
                 shipping_address_doc.city = shipping_address.get("city")
                 shipping_address_doc.state = shipping_address.get("state")
                 shipping_address_doc.pincode = shipping_address.get("pincode")
                 shipping_address_doc.country = shipping_address.get("country")
-                shipping_address_doc.address_type = 'Shipping'
-                shipping_address_doc.owner= user
+                shipping_address_doc.address_type = "Shipping"
+                shipping_address_doc.owner = user
                 shipping_address_doc.is_shipping_address = True
                 shipping_address_doc.save(ignore_permissions=True)
-                # shipping_address_doc.submit() 
+                # shipping_address_doc.submit()
 
             frappe.db.set_value("Customer", customer_doc.name, "mobile_no", mobile_no)
             frappe.db.commit()
 
             # Return success response
-            frappe.response["data"] = {"status": "success", "message": "Profile updated successfully."}
+            frappe.response["data"] = {
+                "status": "success",
+                "message": "Profile updated successfully.",
+            }
 
     except frappe.PermissionError as e:
         # Handle permission errors (e.g., guest user trying to access)
@@ -381,7 +447,9 @@ def get_customer_past_orders(page=1, page_size=10):
         user = frappe.local.session.user
 
         if user is None or user == "Guest":
-            frappe.throw("You need to be logged in to view your orders.", frappe.PermissionError)
+            frappe.throw(
+                "You need to be logged in to view your orders.", frappe.PermissionError
+            )
 
         # Fetch the customer linked with the logged-in user's email
         customer = frappe.db.get_value(
@@ -392,7 +460,9 @@ def get_customer_past_orders(page=1, page_size=10):
         )
 
         if not customer:
-            frappe.throw("Customer profile not found for this user.", frappe.DoesNotExistError)
+            frappe.throw(
+                "Customer profile not found for this user.", frappe.DoesNotExistError
+            )
 
         # Validate page and page_size
         try:
@@ -401,7 +471,10 @@ def get_customer_past_orders(page=1, page_size=10):
             if page <= 0 or page_size <= 0:
                 raise ValueError("Page and page size must be positive integers")
         except ValueError as e:
-            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+            frappe.throw(
+                _("Invalid page or page size: {0}").format(str(e)),
+                frappe.InvalidRequestError,
+            )
 
         # Calculate the offset and limit for pagination
         offset = (page - 1) * page_size
@@ -410,26 +483,87 @@ def get_customer_past_orders(page=1, page_size=10):
         # Fetch past orders for the customer
         orders = frappe.get_all(
             "Sales Order",
-            filters={"customer": customer["name"], "docstatus": 1},  # Assuming docstatus=1 means completed orders
+            filters={
+                "customer": customer["name"],
+                "docstatus": 1,
+            },  # Assuming docstatus=1 means completed orders
             fields=["name", "transaction_date", "status", "grand_total"],
             order_by="transaction_date desc",
             limit_start=offset,
-            limit_page_length=limit
+            limit_page_length=limit,
         )
 
         # Prepare orders data
-        order_data = [
-            {
-                "order_id": order["name"],
-                "date": order["transaction_date"],
-                "status": order["status"],
-                "total_amount": order["grand_total"]
+        # order_data = [
+        #     {
+        #         "order_id": order["name"],
+        #         "date": order["transaction_date"],
+        #         "status": order["status"],
+        #         "total_amount": order["grand_total"]
+        #     }
+        #     order = frappe.get_doc("Sales Order", order["name"])
+        #     for order in orders
+        # ]
+
+        # Assuming you have a list of orders fetched earlier
+        order_data = []
+
+        for order in orders:
+            # Use frappe.get_doc to get the complete order details
+            order_doc = frappe.get_doc("Sales Order", order["name"])
+
+            # Build the order data structure with the required fields
+            order_entry = {
+                "order_id": order_doc.name,
+                "date": order_doc.transaction_date,
+                "createdAt": order_doc.creation.isoformat(),
+                "status": order_doc.status,
+                "total_amount": order_doc.grand_total,
+                "items": [
+                    {
+                        "item_code": item.item_code,
+                        "item_name": item.item_name,
+                        "quantity": item.qty,
+                        "base_price": item.price_list_rate,
+                        "price": item.rate,
+                        "amount": item.amount,
+                    }
+                    for item in order_doc.items
+                ],
             }
-            for order in orders
-        ]
+
+            order_data.append(order_entry)
+
+        # orders_data = []
+
+        # for order_name in orders:
+        #     order = frappe.get_doc("Sales Order", order_name)
+
+        #     # Prepare the order data structure
+        #     order_data = {
+        #         "order_id": order.name,
+        #         "date": order.transaction_date,
+        #         "status": order.status,
+        #         "total_amount": order.grand_total,
+        #         "items": [
+        #             {
+        #                 "item_code": item.item_code,
+        #                 "item_name": item.item_name,
+        #                 "quantity": item.qty,
+        #                 "base_price": item.price_list_rate,
+        #                 "price": item.rate,
+        #                 "amount": item.amount
+        #             }
+        #             for item in order.items  # 'items' is the child table field in Sales Order
+        #         ]
+        #     }
+
+        #     orders_data.append(order_data)
 
         # Check if there are more pages
-        total_orders = frappe.db.count('Sales Order', filters={'customer': customer["name"]})
+        total_orders = frappe.db.count(
+            "Sales Order", filters={"customer": customer["name"]}
+        )
         total_pages = (total_orders + page_size - 1) // page_size  # Ceiling division
 
         # Return orders data
@@ -472,7 +606,7 @@ def get_order_details_by_id(order_id):
     """
     Custom API to get details of a specific order by ID.
     Restricts access to only the logged-in customer's orders.
-    Returns order details such as date, status, total amount, items, taxes, 
+    Returns order details such as date, status, total amount, items, taxes,
     shipping address, and contact info.
     Includes exception handling for various scenarios.
     """
@@ -486,7 +620,155 @@ def get_order_details_by_id(order_id):
         user = frappe.local.session.user
 
         if user is None or user == "Guest":
-            frappe.throw("You need to be logged in to view order details.", frappe.PermissionError)
+            frappe.throw(
+                "You need to be logged in to view order details.",
+                frappe.PermissionError,
+            )
+
+        # # Fetch the customer linked with the logged-in user's email
+        # customer = frappe.db.get_value(
+        #     "Customer",
+        #     {"email_id": user},
+        #     ["name"],
+        #     as_dict=True,
+        # )
+
+        # if not customer:
+        #     frappe.throw(
+        #         "Customer profile not found for this user.", frappe.DoesNotExistError
+        #     )
+
+        # Fetch the order details
+        order = frappe.get_doc("Sales Order", order_id)
+
+        if not order:
+            frappe.throw("Order not found.", frappe.DoesNotExistError)
+
+        # Check if the order belongs to the current customer
+        # if order.customer != customer["name"]:
+        #     frappe.throw(
+        #         "You do not have permission to access this order.",
+        #         frappe.PermissionError,
+        #     )
+
+        delivery_notes = frappe.get_all(
+            "Delivery Note Item",
+            filters={"against_sales_order": order_id},
+            fields=["parent"],
+            limit =1
+        )
+        delivery_note = frappe.get_doc("Delivery Note", delivery_notes[0].parent)
+        # Prepare order data
+        order_data = {
+            "order_id": order.name,
+            "date": order.transaction_date,
+            "status": delivery_note.custom_delivery_status,
+            "net_total": order.net_total,
+            "grand_total": order.grand_total,
+            "items": [
+                {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "image": frappe.get_value(
+                        "Item", filters={"item_code": item.item_code}, fieldname="image"
+                    ),
+                    "quantity": item.qty,
+                    "price_list_rate": item.price_list_rate,
+                    "price": item.rate,
+                    "amount": item.amount,
+                }
+                for item in order.items
+            ],
+            # Fetch taxes from the Sales Taxes and Charges table
+            "taxes": [
+                {
+                    "tax_type": tax.description,
+                    "tax_rate": tax.rate,
+                    "tax_amount": tax.tax_amount,
+                }
+                for tax in order.taxes
+            ],
+            # Fetch shipping address
+            "shipping_address": {
+                "address_line1": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "address_line1"
+                ),
+                "address_line2": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "address_line2"
+                ),
+                "city": order.shipping_address_name
+                and frappe.db.get_value("Address", order.shipping_address_name, "city"),
+                "state": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "state"
+                ),
+                "pincode": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "pincode"
+                ),
+                "country": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "country"
+                ),
+            },
+            # Fetch contact information
+            "contact_info": {
+                "contact_name": order.contact_display,
+                "contact_mobile": order.contact_mobile,
+            },
+        }
+
+        # Return order data
+        frappe.response["data"] = {"status": "success", "order": order_data}
+
+    except frappe.PermissionError as e:
+        # Handle permission errors (e.g., unauthorized access)
+        frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
+        frappe.response["data"] = {"message": "Permission error", "error": str(e)}
+
+    except frappe.DoesNotExistError as e:
+        # Handle case where the order or customer profile is not found
+        frappe.local.response["http_status_code"] = HTTPStatus.NOT_FOUND
+        frappe.response["data"] = {
+            "message": "Requested document does not exist",
+            "error": str(e),
+        }
+
+    except Exception as e:
+        # Handle any unexpected errors
+        frappe.log_error(frappe.get_traceback(), "Get Order Details API Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
+
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def get_order_details_by_quotation_name(quotation_name):
+    """
+    Custom API to get details of a specific order by quotation_name.
+    Restricts access to only the logged-in customer's orders.
+    Returns order details such as date, status, total amount, items, taxes,
+    shipping address, and contact info.
+    Includes exception handling for various scenarios.
+    """
+    try:
+        # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+
+        # Get the current user
+        user = frappe.local.session.user
+
+        if user is None or user == "Guest":
+            frappe.throw(
+                "You need to be logged in to view order details.",
+                frappe.PermissionError,
+            )
 
         # Fetch the customer linked with the logged-in user's email
         customer = frappe.db.get_value(
@@ -497,32 +779,51 @@ def get_order_details_by_id(order_id):
         )
 
         if not customer:
-            frappe.throw("Customer profile not found for this user.", frappe.DoesNotExistError)
+            frappe.throw(
+                "Customer profile not found for this user.", frappe.DoesNotExistError
+            )
 
+        soi = frappe.get_all(
+            "Sales Order Item",
+            filters={"prevdoc_docname": quotation_name},
+            fields={"parent"},
+            limit=1,
+        )
+
+        if not soi:
+            frappe.throw("Order not found.", frappe.DoesNotExistError)
         # Fetch the order details
-        order = frappe.get_doc("Sales Order", order_id)
+        order = frappe.get_doc("Sales Order", soi[0].get("parent"))
 
         if not order:
             frappe.throw("Order not found.", frappe.DoesNotExistError)
 
         # Check if the order belongs to the current customer
         if order.customer != customer["name"]:
-            frappe.throw("You do not have permission to access this order.", frappe.PermissionError)
+            frappe.throw(
+                "You do not have permission to access this order.",
+                frappe.PermissionError,
+            )
 
         # Prepare order data
         order_data = {
             "order_id": order.name,
+            "quotation_name": quotation_name,
             "date": order.transaction_date,
             "status": order.status,
-            "total_amount": order.grand_total,
+            "net_total": order.net_total,
+            "grand_total": order.grand_total,
             "items": [
                 {
                     "item_code": item.item_code,
                     "item_name": item.item_name,
+                    "image": frappe.get_value(
+                        "Item", filters={"item_code": item.item_code}, fieldname="image"
+                    ),
                     "quantity": item.qty,
-                    "base_price": item.price_list_rate,
+                    "price_list_rate": item.price_list_rate,
                     "price": item.rate,
-                    "amount": item.amount
+                    "amount": item.amount,
                 }
                 for item in order.items
             ],
@@ -531,24 +832,40 @@ def get_order_details_by_id(order_id):
                 {
                     "tax_type": tax.description,
                     "tax_rate": tax.rate,
-                    "tax_amount": tax.tax_amount
+                    "tax_amount": tax.tax_amount,
                 }
                 for tax in order.taxes
             ],
             # Fetch shipping address
             "shipping_address": {
-                "address_line1": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "address_line1"),
-                "address_line2": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "address_line2"),
-                "city": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "city"),
-                "state": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "state"),
-                "pincode": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "pincode"),
-                "country": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "country")
+                "address_line1": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "address_line1"
+                ),
+                "address_line2": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "address_line2"
+                ),
+                "city": order.shipping_address_name
+                and frappe.db.get_value("Address", order.shipping_address_name, "city"),
+                "state": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "state"
+                ),
+                "pincode": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "pincode"
+                ),
+                "country": order.shipping_address_name
+                and frappe.db.get_value(
+                    "Address", order.shipping_address_name, "country"
+                ),
             },
             # Fetch contact information
             "contact_info": {
                 "contact_name": order.contact_display,
-                "contact_mobile": order.contact_mobile
-            }
+                "contact_mobile": order.contact_mobile,
+            },
         }
 
         # Return order data
@@ -596,7 +913,9 @@ def reorder_quotation(order_id=None):
         user = frappe.local.session.user
 
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("You need to be logged in to reorder items.", frappe.PermissionError)
+            frappe.throw(
+                "You need to be logged in to reorder items.", frappe.PermissionError
+            )
 
         # Ensure an order ID is provided
         if not order_id:
@@ -611,13 +930,19 @@ def reorder_quotation(order_id=None):
         )
 
         if not customer:
-            frappe.throw("Customer profile not found for this user.", frappe.DoesNotExistError)
+            frappe.throw(
+                "Customer profile not found for this user.", frappe.DoesNotExistError
+            )
 
         # Fetch the previous Sales Order using the order_id
-        sales_order = frappe.get_doc("Sales Order", {"name": order_id, "customer": customer["name"]})
+        sales_order = frappe.get_doc(
+            "Sales Order", {"name": order_id, "customer": customer["name"]}
+        )
 
         if not sales_order:
-            frappe.throw("No such order found for the current user.", frappe.DoesNotExistError)
+            frappe.throw(
+                "No such order found for the current user.", frappe.DoesNotExistError
+            )
 
         # Create a new Quotation for the same customer
         # quotation = frappe.new_doc("Quotation")
@@ -627,7 +952,9 @@ def reorder_quotation(order_id=None):
         quotation.currency = sales_order.currency
         quotation.conversion_rate = sales_order.conversion_rate
         quotation.quotation_to = "Customer"
-        quotation.shipping_rule = sales_order.shipping_rule  # Apply the same shipping rule, if any
+        quotation.shipping_rule = (
+            sales_order.shipping_rule
+        )  # Apply the same shipping rule, if any
 
         # Use the same shipping and billing address
         quotation.customer_primary_address = sales_order.customer_address
@@ -640,16 +967,24 @@ def reorder_quotation(order_id=None):
         for item in sales_order.items:
             try:
                 # Step 1: Check if the item is available (not disabled)
-                item_status = frappe.db.get_value("Item", {"item_code": item.item_code}, ["disabled", "is_stock_item"])
+                item_status = frappe.db.get_value(
+                    "Item", {"item_code": item.item_code}, ["disabled", "is_stock_item"]
+                )
                 if item_status and item_status[0] == 1:
                     unavailable_items.append(f"Item '{item.item_code}' is disabled.")
                     continue  # Skip to the next item
 
                 # Step 2: Check stock availability for stock items
                 if item_status and item_status[1] == 1:  # If the item is a stock item
-                    available_qty = frappe.db.get_value("Bin", {"item_code": item.item_code, "warehouse": item.warehouse}, "projected_qty")
+                    available_qty = frappe.db.get_value(
+                        "Bin",
+                        {"item_code": item.item_code, "warehouse": item.warehouse},
+                        "projected_qty",
+                    )
                     if available_qty < item.qty:
-                        unavailable_items.append(f"Item '{item.item_code}' is out of stock. Available: {available_qty}, Required: {item.qty}.")
+                        unavailable_items.append(
+                            f"Item '{item.item_code}' is out of stock. Available: {available_qty}, Required: {item.qty}."
+                        )
                         continue  # Skip to the next item
 
                 # # Step 3: Apply Pricing Rule (if any)
@@ -674,12 +1009,16 @@ def reorder_quotation(order_id=None):
 
             except Exception as item_error:
                 # Log any unexpected error related to individual item processing
-                unavailable_items.append(f"Error adding item '{item.item_code}': {str(item_error)}")
+                unavailable_items.append(
+                    f"Error adding item '{item.item_code}': {str(item_error)}"
+                )
 
         # Check if at least one item is available
         if not quotation.items:
-            frappe.throw("None of the items from the previous order are available for reorder.")
-        
+            frappe.throw(
+                "None of the items from the previous order are available for reorder."
+            )
+
         apply_cart_settings(quotation=quotation)
 
         quotation.flags.ignore_permissions = True
@@ -694,7 +1033,7 @@ def reorder_quotation(order_id=None):
             "status": "success",
             "message": "New Quotation created successfully",
             "quotation_id": quotation.name,
-            "unavailable_items": unavailable_items
+            "unavailable_items": unavailable_items,
         }
 
     except frappe.DoesNotExistError as e:
@@ -712,4 +1051,3 @@ def reorder_quotation(order_id=None):
             "message": "An unexpected error occurred. Please try again later.",
             "error": str(e),
         }
-
