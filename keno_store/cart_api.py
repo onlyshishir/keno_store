@@ -109,7 +109,10 @@ def get_cart_quotation(doc=None, session_id=None):
             "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.custom_delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
             "delivery_option": {
                 "delivery_method": quotation.custom_delivery_method,
-                "delivery_slot": quotation.custom_delivery_slot
+                "delivery_type": quotation.custom_delivery_type,
+                "delivery_slot": quotation.custom_delivery_slot,
+                "store": quotation.custom_pickup_store,
+                "store_pickup_time": quotation.custom_store_pickup_datetime
             },
             "items": [
                 {
@@ -2214,8 +2217,9 @@ def update_cart_details(cart, session_id=None):
                     quotation.custom_pickup_store = delivery_option.get("store")
                     quotation.custom_store_pickup_datetime = delivery_option.get("store_pickup_time")
             if delivery_option.get("delivery_slot"):
+                delivery_slot_name = delivery_option.get("delivery_slot")
                 delivery_slot = frappe.get_doc(
-                    "Delivery Slot", delivery_option.get("delivery_slot")
+                    "Delivery Slot", delivery_slot_name
                 )
                 quotation.custom_delivery_slot = delivery_slot.name
             else:
