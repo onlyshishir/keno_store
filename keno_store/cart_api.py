@@ -91,6 +91,13 @@ def get_cart_quotation(doc=None, session_id=None):
         
         f_billing_address = get_formatted_address(quotation.customer_address)
         f_shipping_address = get_formatted_address(quotation.shipping_address_name)
+        is_ready_for_order = False
+        if quotation.custom_delivery_method == 'Home Delivery':
+            if f_billing_address and f_shipping_address and quotation.custom_delivery_slot and quotation.contact_display and quotation.contact_mobile:
+                is_ready_for_order = True
+        elif quotation.custom_delivery_method == 'Store Pickup':
+            if quotation.custom_pickup_store and quotation.custom_store_pickup_datetime:
+                is_ready_for_order = True
 
         cart = {
             "session_id": quotation.custom_session_id,
