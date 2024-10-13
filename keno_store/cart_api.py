@@ -113,7 +113,7 @@ def get_cart_quotation(doc=None, session_id=None):
             "in_words": quotation.in_words,
             "coupon_code": coupon_code,
             "is_coupon_applied": bool(quotation.coupon_code),
-            "is_ready_for_order": True if f_billing_address and f_shipping_address and quotation.custom_delivery_slot and quotation.contact_display and quotation.contact_mobile else False,
+            "is_ready_for_order": is_ready_for_order,
             "delivery_option": {
                 "delivery_method": quotation.custom_delivery_method,
                 "delivery_type": quotation.custom_delivery_type,
