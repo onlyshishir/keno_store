@@ -3,7 +3,9 @@ import frappe
 from frappe import _
 from frappe.auth import validate_auth_via_api_keys
 from frappe.utils.data import cint
+from frappe.utils.file_manager import save_file
 from keno_store.cart_api import _get_cart_quotation, apply_cart_settings, set_cart_count
+from webshop.webshop.doctype.item_review.item_review import get_customer
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -312,6 +314,14 @@ def manage_customer_profile(profile=None):
                     "First name, last name, and email are required.",
                     frappe.ValidationError,
                 )
+
+            user_doc = frappe.get_doc("User", user)
+            if user_doc:
+                user_doc.first_name = first_name
+                user_doc.last_name = last_name
+                user_doc.email = email
+                user_doc.mobile_no = mobile_no
+                user_doc.save(ignore_permissions=True)
 
             customer_name = f"{first_name} {last_name}"
             customer_doc = frappe.get_doc("Customer", {"email_id": email})
@@ -1051,3 +1061,61 @@ def reorder_quotation(order_id=None):
             "message": "An unexpected error occurred. Please try again later.",
             "error": str(e),
         }
+
+import frappe
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def update_profile_picture():
+    try:
+        # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+
+        # Get the current user
+        user = frappe.local.session.user
+
+        if user is None or user == "Guest":
+            frappe.throw("You need to be logged in to update your profile picture.", frappe.PermissionError)
+
+        # Check if a file has been uploaded
+        if 'image_file' not in frappe.request.files:
+            frappe.throw("No image file uploaded.", frappe.ValidationError)
+
+        # Get the uploaded file
+        image_file = frappe.request.files['image_file']
+
+        # Save the file to the File Manager
+        file_doc = save_file(
+            fname=image_file.filename,
+            content=image_file.read(),  # Read the content of the uploaded file
+            dt="User",
+            dn=user,
+            folder='Home',
+            decode=False,
+            is_private=0,
+            df=None
+        )
+
+        # Get the file URL
+        file_url = file_doc.file_url
+
+        # Update the user's profile picture
+        frappe.db.set_value("User", user, "user_image", file_url)
+
+        frappe.db.set_value("Customer", get_customer(), "image", file_url)
+
+        # Commit the changes to the database
+        frappe.db.commit()
+
+        frappe.response["data"] = {
+            "message": "Profile picture updated successfully",
+            "file_url": file_url
+        }
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Update Profile Picture Error")
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
+

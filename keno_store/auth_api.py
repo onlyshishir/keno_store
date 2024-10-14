@@ -190,7 +190,7 @@ def reset_password(user: str) -> str:
             "link": {reset_pasword_link},
         }
     except frappe.ValidationError as e:
-        frappe.local.response["http_status_code"] = 404
+        # frappe.local.response["http_status_code"] = 404
         frappe.response["data"] = {
             "message": "There was a validation error",
             "error": str(e),
