@@ -2411,6 +2411,80 @@ def get_delivery_slot(delivery_type=None):
         }
 
 
+@frappe.whitelist(allow_guest=True, methods="GET")
+def fetch_cart(session_id=None):
+    try:
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+
+        # Check if the user is logged in
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            if session_id is None:
+                frappe.throw("Should include session id for Guest user.")
+
+        # Get the party (customer)
+        party = get_party()
+
+        # Fetch or create the quotation (cart)
+
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            quotation = frappe.get_all(
+                "Quotation",
+                filters={"custom_session_id": session_id, "docstatus": 0},
+                limit=1,
+            )
+            if quotation:
+                quotation = frappe.get_doc("Quotation", quotation[0].name)
+            else:
+                frappe.throw("Cart is emplty!!")
+        else:
+            quotation = _get_cart_quotation(party)
+
+        
+        
+
+        # Prepare the response data
+        cart_response = []
+        for cart_item in quotation.items:
+            # item_details = frappe.get_doc("Item", cart_item.item_code)
+            formatted_item = {
+                "_id": cart_item.item_code,
+                "count": cart_item.qty,
+                "item": {
+                    # "formatted_mrp": cart_item.formatted_mrp,
+                    # "formatted_price": cart_item.formatted_price,
+                    # "has_variants": cart_item.has_variants,
+                    "in_cart": True,
+                    # "in_stock": cart_item.in_stock,
+                    "item_code": cart_item.item_code,
+                    "item_group": cart_item.item_group,
+                    "item_name": cart_item.item_name,
+                    "name": cart_item.name,
+                    # "on_backorder": cart_item.on_backorder,
+                    "price_list_rate": cart_item.price_list_rate,
+                    # "ranking": cart_item.ranking,
+                    # "rating": cart_item.rating,
+                    # "route": cart_item.route,
+                    # "short_description": cart_item.short_description,
+                    # "variant_of": cart_item.variant_of,
+                    "web_item_name": cart_item.item_name,
+                    # "web_long_description": item_details.web_long_description,
+                    "website_image": cart_item.image,
+                    # "website_warehouse": item_details.website_warehouse,
+                    "wished": False
+                }
+            }
+            cart_response.append(formatted_item)
+
+        # Return the formatted response
+        return cart_response
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Fetch Cart Error")
+        frappe.throw(_("An error occurred while fetching the cart. Please try again later."), frappe.ValidationError)
+
+
 def get_day_name(date_str):
     # Convert date string to a datetime object
     date_obj = getdate(date_str)
