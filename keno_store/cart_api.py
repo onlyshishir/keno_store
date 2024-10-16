@@ -2411,7 +2411,7 @@ def get_delivery_slot(delivery_type=None):
         }
 
 
-@frappe.whitelist(allow_guest=True, methods="GET")
+@frappe.whitelist(allow_guest=True, methods="POST")
 def fetch_cart(session_id=None):
     try:
         validate_auth_via_api_keys(
