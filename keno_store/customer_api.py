@@ -1109,6 +1109,7 @@ def update_profile_picture():
         frappe.db.commit()
 
         frappe.response["data"] = {
+            "status": "success",
             "message": "Profile picture updated successfully",
             "file_url": file_url
         }
