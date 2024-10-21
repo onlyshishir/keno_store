@@ -81,21 +81,27 @@ def get_cart_quotation(doc=None, session_id=None):
         coupon_code = None
 
         if quotation.coupon_code:
-            coupon = frappe.get_doc('Coupon Code', {'name': quotation.coupon_code})
+            coupon = frappe.get_doc("Coupon Code", {"name": quotation.coupon_code})
             # Access details from the coupon document
             coupon_code = coupon.coupon_code
 
         # Update billing address if none exists and addresses are available
         if not doc.customer_address and addresses:
             update_cart_address("billing", addresses[0].name)
-        
+
         f_billing_address = get_formatted_address(quotation.customer_address)
         f_shipping_address = get_formatted_address(quotation.shipping_address_name)
         is_ready_for_order = False
-        if quotation.custom_delivery_method == 'Home Delivery':
-            if f_billing_address and f_shipping_address and quotation.custom_delivery_slot and quotation.contact_display and quotation.contact_mobile:
+        if quotation.custom_delivery_method == "Home Delivery":
+            if (
+                f_billing_address
+                and f_shipping_address
+                and quotation.custom_delivery_slot
+                and quotation.contact_display
+                and quotation.contact_mobile
+            ):
                 is_ready_for_order = True
-        elif quotation.custom_delivery_method == 'Store Pickup':
+        elif quotation.custom_delivery_method == "Store Pickup":
             if quotation.custom_pickup_store and quotation.custom_store_pickup_datetime:
                 is_ready_for_order = True
 
@@ -119,7 +125,7 @@ def get_cart_quotation(doc=None, session_id=None):
                 "delivery_type": quotation.custom_delivery_type,
                 "delivery_slot": quotation.custom_delivery_slot,
                 "store": quotation.custom_pickup_store,
-                "store_pickup_time": quotation.custom_store_pickup_datetime
+                "store_pickup_time": quotation.custom_store_pickup_datetime,
             },
             "items": [
                 {
@@ -130,7 +136,7 @@ def get_cart_quotation(doc=None, session_id=None):
                     "price": item.rate,
                     "discount_amount": item.discount_amount,
                     "amount": item.amount,
-                    "image": item.image
+                    "image": item.image,
                 }
                 for item in quotation.items
             ],
@@ -143,7 +149,7 @@ def get_cart_quotation(doc=None, session_id=None):
                 for tax in quotation.taxes
             ],
             # "shipping_address": get_shipping_addresses(party)[0],
-            "billing_address":f_billing_address,
+            "billing_address": f_billing_address,
             "shipping_address": f_shipping_address,
         }
 
@@ -252,14 +258,17 @@ def place_order_old(payment_method, session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
-        
+
         # Define the allowed payment methods
         allowed_payment_methods = ["card", "google_pay", "apple_pay", "paypal"]
 
         # Check if the payment method is valid
         if payment_method not in allowed_payment_methods:
             # Throw an exception if the payment method is invalid
-            frappe.throw(f"Invalid payment method: {payment_method}. Allowed methods are: {', '.join(allowed_payment_methods)}.", frappe.ValidationError)
+            frappe.throw(
+                f"Invalid payment method: {payment_method}. Allowed methods are: {', '.join(allowed_payment_methods)}.",
+                frappe.ValidationError,
+            )
 
         # Get the party (customer)
         party = get_party()
@@ -285,13 +294,18 @@ def place_order_old(payment_method, session_id=None):
         # quotation = _get_cart_quotation()
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
-        
-        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.custom_delivery_slot) :
+
+        if not (
+            quotation.contact_display
+            or quotation.contact_mobile
+            or quotation.shipping_address_name
+            or quotation.custom_delivery_method
+            or quotation.customer_address
+            or quotation.custom_delivery_slot
+        ):
             frappe.throw("Cart is not ready to place order", frappe.ValidationError)
 
-        delivery_slot = frappe.get_doc(
-            "Delivery Slot", quotation.custom_delivery_slot
-        )
+        delivery_slot = frappe.get_doc("Delivery Slot", quotation.custom_delivery_slot)
 
         quotation.flags.ignore_permissions = True
         quotation.submit()
@@ -333,9 +347,11 @@ def place_order_old(payment_method, session_id=None):
         # Adding Delivery Method, Delivery Date And Delivery Slots data
         sales_order.custom_delivery_method = quotation.custom_delivery_method
         if quotation.custom_delivery_slot:
-            sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
-        
-        sales_order.custom_payment_method=payment_method
+            sales_order.delivery_date, sales_order.custom_delivery_slot = (
+                get_date_and_time_slot(delivery_slot)
+            )
+
+        sales_order.custom_payment_method = payment_method
 
         # Create a Stripe PaymentIntent
         stripe_keys = get_stripe_keys()
@@ -343,7 +359,9 @@ def place_order_old(payment_method, session_id=None):
             "X-Forwarded-For"
         ) or frappe.request.headers.get("Remote-Addr")
         amount_in_cents = int(float(sales_order.rounded_total) * 100)
-        shipping_address_doc=frappe.get_doc("Address", quotation.shipping_address_name)
+        shipping_address_doc = frappe.get_doc(
+            "Address", quotation.shipping_address_name
+        )
         intent = stripe.PaymentIntent.create(
             amount=amount_in_cents,
             currency=sales_order.currency,
@@ -374,7 +392,7 @@ def place_order_old(payment_method, session_id=None):
             },
         )
 
-        sales_order.custom_payment_reference=intent["id"]
+        sales_order.custom_payment_reference = intent["id"]
         sales_order.flags.ignore_permissions = True
         sales_order.save()
         sales_order.submit()
@@ -409,7 +427,9 @@ def cancel_stripe_payment_intent(sales_order):
             # Create a Stripe PaymentIntent
             stripe_keys = get_stripe_keys()
             stripe.PaymentIntent.cancel(stripe_payment_id)
-            frappe.msgprint(f"Stripe Payment Intent {stripe_payment_id} has been cancelled.")
+            frappe.msgprint(
+                f"Stripe Payment Intent {stripe_payment_id} has been cancelled."
+            )
         except Exception as e:
             frappe.log_error(frappe.get_traceback(), "Stripe Payment Cancel Failed")
             frappe.throw(f"Failed to cancel Stripe Payment Intent: {str(e)}")
@@ -420,10 +440,18 @@ def get_date_and_time_slot(delivery_slot):
     day_name = delivery_slot.day
     start_time = delivery_slot.start_time
     end_time = delivery_slot.end_time
-    
+
     # Create a list of day names in order, starting from Monday (0) to Sunday (6)
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    
+    days_of_week = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+
     # Get the current date and today's weekday as an integer (Monday is 0, Sunday is 6)
     today = datetime.now()
     today_weekday = today.weekday()
@@ -439,11 +467,11 @@ def get_date_and_time_slot(delivery_slot):
 
     # Calculate the date of the target day
     target_date = today + timedelta(days=days_until_target)
-    target_date_str = target_date.strftime('%Y-%m-%d')
+    target_date_str = target_date.strftime("%Y-%m-%d")
 
     # Combine the date with the start and end time
     time_slot = f"{start_time} - {end_time}"
-    
+
     # Return the formatted string with date and time slot
     return target_date_str, time_slot
 
@@ -470,7 +498,7 @@ def cancel_order(sales_order, session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
-        
+
         # Fetch the sales order document
         sales_order = frappe.get_doc("Sales Order", sales_order)
 
@@ -488,22 +516,25 @@ def cancel_order(sales_order, session_id=None):
         # Bypass permission checks for cancellation
         sales_order.flags.ignore_permissions = True
         sales_order.cancel()
-        
+
         if quotation_name:
             # Fetch and cancel the related Quotation
             quotation = frappe.get_doc("Quotation", quotation_name)
             if quotation.docstatus == 1:
                 quotation.flags.ignore_permissions = True
                 quotation.cancel()
-                frappe.msgprint(f"Related Quotation {quotation_name} has been cancelled.")
+                frappe.msgprint(
+                    f"Related Quotation {quotation_name} has been cancelled."
+                )
 
             # Create a new Quotation as a draft
             new_quotation = frappe.copy_doc(quotation)
             new_quotation.docstatus = 0  # Set as draft
             apply_cart_settings(quotation=new_quotation)
             new_quotation.save(ignore_permissions=True)
-            frappe.msgprint(f"A new draft Quotation {new_quotation.name} has been created from the cancelled Quotation.")
-        
+            frappe.msgprint(
+                f"A new draft Quotation {new_quotation.name} has been created from the cancelled Quotation."
+            )
 
         # Handle stock reversal (optional, if you had any stock reserved)
         # You might want to restore reserved stock if applicable
@@ -1090,21 +1121,25 @@ def _apply_shipping_rule(party=None, quotation=None, cart_settings=None):
 
     # Check if shipping rule is not already set
     # if not quotation.shipping_rule:
-        # Check if custom delivery method is set
+    # Check if custom delivery method is set
     if quotation.custom_delivery_method:
         # Handle store pickup scenario
-        if quotation.custom_delivery_method == 'Store Pickup':
+        if quotation.custom_delivery_method == "Store Pickup":
             try:
                 shipping_rules = [frappe.get_doc("Shipping Rule", "Store Pickup").name]
 
             except frappe.DoesNotExistError:
                 frappe.throw(_("Store Pickup shipping rule does not exist."))
-        elif quotation.custom_delivery_method == 'Home Delivery':
+        elif quotation.custom_delivery_method == "Home Delivery":
             try:
-                if quotation.custom_delivery_type == 'Express Delivery':
-                    shipping_rules = [frappe.get_doc("Shipping Rule", "Express Delivery").name]
+                if quotation.custom_delivery_type == "Express Delivery":
+                    shipping_rules = [
+                        frappe.get_doc("Shipping Rule", "Express Delivery").name
+                    ]
                 else:
-                    shipping_rules = [frappe.get_doc("Shipping Rule", "Normal Delivery").name]
+                    shipping_rules = [
+                        frappe.get_doc("Shipping Rule", "Normal Delivery").name
+                    ]
 
             except frappe.DoesNotExistError:
                 frappe.throw(_("Store Pickup shipping rule does not exist."))
@@ -1129,8 +1164,15 @@ def _apply_shipping_rule(party=None, quotation=None, cart_settings=None):
             quotation.run_method("apply_shipping_rule")
             quotation.run_method("calculate_taxes_and_totals")
         except Exception as e:
-            frappe.log_error(f"Failed to apply shipping rule: {str(e)}", "Shipping Rule Application Error")
-            frappe.throw(_("Failed to apply shipping rule. Please check the logs for more details."))
+            frappe.log_error(
+                f"Failed to apply shipping rule: {str(e)}",
+                "Shipping Rule Application Error",
+            )
+            frappe.throw(
+                _(
+                    "Failed to apply shipping rule. Please check the logs for more details."
+                )
+            )
 
 
 def get_applicable_shipping_rules(party=None, quotation=None):
@@ -1376,9 +1418,13 @@ def get_stripe_keys():
             _("Stripe Secret Key is missing. Please configure Stripe Settings.")
         )
 
-    stripe.api_key = stripe_settings.get_password(fieldname="secret_key", raise_exception=False)
+    stripe.api_key = stripe_settings.get_password(
+        fieldname="secret_key", raise_exception=False
+    )
     return {
-        "secret_key": stripe_settings.get_password(fieldname="secret_key", raise_exception=False),
+        "secret_key": stripe_settings.get_password(
+            fieldname="secret_key", raise_exception=False
+        ),
         "publishable_key": stripe_settings.publishable_key,
         "redirect_url": stripe_settings.redirect_url,
     }
@@ -1408,14 +1454,17 @@ def place_order(payment_method, session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
-        
+
         # Define the allowed payment methods
         allowed_payment_methods = ["card", "google_pay", "apple_pay", "paypal"]
 
         # Check if the payment method is valid
         if payment_method not in allowed_payment_methods:
             # Throw an exception if the payment method is invalid
-            frappe.throw(f"Invalid payment method: {payment_method}. Allowed methods are: {', '.join(allowed_payment_methods)}.", frappe.ValidationError)
+            frappe.throw(
+                f"Invalid payment method: {payment_method}. Allowed methods are: {', '.join(allowed_payment_methods)}.",
+                frappe.ValidationError,
+            )
 
         # Get the party (customer)
         party = get_party()
@@ -1441,8 +1490,15 @@ def place_order(payment_method, session_id=None):
         # quotation = _get_cart_quotation()
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
-        
-        if not (quotation.contact_display or quotation.contact_mobile or quotation.shipping_address_name or quotation.custom_delivery_method or quotation.customer_address or quotation.custom_delivery_slot) :
+
+        if not (
+            quotation.contact_display
+            or quotation.contact_mobile
+            or quotation.shipping_address_name
+            or quotation.custom_delivery_method
+            or quotation.customer_address
+            or quotation.custom_delivery_slot
+        ):
             frappe.throw("Cart is not ready to place order", frappe.ValidationError)
 
         # Validate the amount with quotation's total amount
@@ -1484,20 +1540,37 @@ def place_order(payment_method, session_id=None):
 
         # Fetch shipping address if available
         if quotation.shipping_address_name:
-            saddress = frappe.db.get_value(
-                "Address",
-                quotation.shipping_address_name,
-                [
-                    "address_line1",
-                    "address_line2",
-                    "city",
-                    "state",
-                    "pincode",
-                    "country",
-                ],
-                as_dict=True,
-            )
+            # saddress = frappe.db.get_value(
+            #     "Address",
+            #     quotation.shipping_address_name,
+            #     [
+            #         "address_line1",
+            #         "address_line2",
+            #         "city",
+            #         "state",
+            #         "pincode",
+            #         "country",
+            #     ],
+            #     as_dict=True,
+            # )
+            saddress = frappe.get_doc("Address",quotation.shipping_address_name)
             if saddress:
+                if quotation.custom_delivery_method == "Home Delivery":
+                    shipping_address_string = ", ".join(
+                        [
+                            saddress.get("address_line1", ""),
+                            saddress.get("address_line2", ""),
+                            saddress.get("city", ""),
+                            saddress.get("state", ""),
+                            saddress.get("pincode", ""),
+                            saddress.get("country", ""),
+                        ]
+                    ).strip(", ")
+                    latitude, longitude = get_geolocation_from_address(shipping_address_string)
+                    saddress.custom_latitude = latitude
+                    saddress.custom_longitude = longitude
+                    saddress.save(ignore_permissions = True)
+
                 shipping_address = {
                     "line1": saddress.get("address_line1", ""),
                     "line2": saddress.get("address_line2", ""),
@@ -1515,47 +1588,53 @@ def place_order(payment_method, session_id=None):
         amount_in_cents = int(float(quotation_total) * 100)
 
         # search for existing payment_intent
-        payment_intent = search_payment_intent(quotation.name, quotation.contact_display)
+        payment_intent = search_payment_intent(
+            quotation.name, quotation.contact_display
+        )
 
         if payment_intent:
             if payment_intent.get("amount") != amount_in_cents:
-                update_payment_intent(payment_intent.get("id"), payment_intent.get("metadata"), amount_in_cents)
+                update_payment_intent(
+                    payment_intent.get("id"),
+                    payment_intent.get("metadata"),
+                    amount_in_cents,
+                )
 
         else:
             payment_intent = stripe.PaymentIntent.create(
-            amount=amount_in_cents,
-            currency=quotation.currency,
-            metadata={
-                "integration_check": "accept_a_payment",
-                "quotation_id": quotation.name,
-                "customer_id": quotation.contact_display,
-                "session_id": quotation.custom_session_id,
-                "customer_email": quotation.contact_email,
-                "payment_method": payment_method,
-                "ip_address": ip_address,  # Include IP address in metadata
-            },
-            automatic_payment_methods={
-                "enabled": True,
-            },
-            description=description,
-            receipt_email=customer_email,  # Include customer email
-            shipping={
-                "name": customer_name,  # Include customer name in shipping
-                "address": {
-                    "line1": shipping_address.get("line1", ""),
-                    "line2": shipping_address.get("line2", ""),
-                    "city": shipping_address.get("city", ""),
-                    "state": shipping_address.get("state", ""),
-                    "postal_code": shipping_address.get("postal_code", ""),
-                    "country": shipping_address.get("country", ""),
+                amount=amount_in_cents,
+                currency=quotation.currency,
+                metadata={
+                    "integration_check": "accept_a_payment",
+                    "quotation_id": quotation.name,
+                    "customer_id": quotation.contact_display,
+                    "session_id": quotation.custom_session_id,
+                    "customer_email": quotation.contact_email,
+                    "payment_method": payment_method,
+                    "ip_address": ip_address,  # Include IP address in metadata
                 },
-            },
-        )
+                automatic_payment_methods={
+                    "enabled": True,
+                },
+                description=description,
+                receipt_email=customer_email,  # Include customer email
+                shipping={
+                    "name": customer_name,  # Include customer name in shipping
+                    "address": {
+                        "line1": shipping_address.get("line1", ""),
+                        "line2": shipping_address.get("line2", ""),
+                        "city": shipping_address.get("city", ""),
+                        "state": shipping_address.get("state", ""),
+                        "postal_code": shipping_address.get("postal_code", ""),
+                        "country": shipping_address.get("country", ""),
+                    },
+                },
+            )
         frappe.response["data"] = {
             "status": "success",
             "intent_id": payment_intent["id"],
             "client_secret": payment_intent["client_secret"],
-            "quotation_name": quotation.name
+            "quotation_name": quotation.name,
         }
     except stripe.error.StripeError as e:
         frappe.throw(_("Error creating payment intent: {0}").format(e.user_message))
@@ -1578,18 +1657,18 @@ def search_payment_intent(quotation_id=None, customer_id=None):
             query_parts.append(f"metadata['quotation_id']:'{quotation_id}'")
         if customer_id:
             query_parts.append(f"metadata['customer_id']:'{customer_id}'")
-        
+
         query = " AND ".join(query_parts)
-        
+
         # Add status 'incomplete' filter
         query += " AND status:'requires_payment_method'"
-        
+
         # # Search for payment intents
         # payment_intents = stripe.PaymentIntent.search(
         #     query=query,
         #     limit=1  # Limit the number of results, can be adjusted as needed
         # )
-        
+
         # Return the result
         # return payment_intents[0]
         return search_payment_intent_raw(query)
@@ -1597,23 +1676,21 @@ def search_payment_intent(quotation_id=None, customer_id=None):
     except Exception as e:
         print(f"Error: {e}")
         return None
-    
+
 
 def search_payment_intent_raw(query):
     stripe_keys = get_stripe_keys()
-    url = 'https://api.stripe.com/v1/payment_intents/search'
+    url = "https://api.stripe.com/v1/payment_intents/search"
     headers = {
-        'Authorization': f'Bearer {stripe_keys.get("secret_key")}',
-        'Content-Type': 'application/x-www-form-urlencoded'
+        "Authorization": f'Bearer {stripe_keys.get("secret_key")}',
+        "Content-Type": "application/x-www-form-urlencoded",
     }
-    params = {
-        'query': query  # This is your search query string
-    }
+    params = {"query": query}  # This is your search query string
 
     try:
         # Make the request
         response = requests.get(url, headers=headers, params=params)
-        
+
         # Raise an error if the request failed
         response.raise_for_status()
 
@@ -1621,8 +1698,8 @@ def search_payment_intent_raw(query):
         data = response.json()
 
         # Return the first payment intent if it exists
-        if data and 'data' in data and len(data['data']) > 0:
-            return data['data'][0]
+        if data and "data" in data and len(data["data"]) > 0:
+            return data["data"][0]
         else:
             print("No payment intents found.")
             return None
@@ -1641,7 +1718,7 @@ def update_payment_intent(payment_intent_id, metadata=None, amount=None):
         updated_payment_intent = stripe.PaymentIntent.modify(
             payment_intent_id,
             metadata=metadata,  # You can add or update metadata here
-            amount=amount  # Optional: update amount (if needed)
+            amount=amount,  # Optional: update amount (if needed)
         )
         return updated_payment_intent
     except stripe.error.StripeError as e:
@@ -1654,9 +1731,7 @@ def stripe_webhook():
     payload = frappe.request.data
     sig_header = frappe.request.headers.get("Stripe-Signature")
     # Your webhook secret
-    endpoint_secret = (
-        "whsec_HvbyOfL3GqoZj0KampikDsuwmSKV5PrK"
-    )
+    endpoint_secret = "whsec_bf4cd90ee112427471f8ba100ddb38837c447f9529c4e9071f931fe889986286"
     set_session_user("administrator")
 
     try:
@@ -1688,7 +1763,9 @@ def stripe_webhook():
 
             if quotation_name:
                 # Proceed with order placement and payment handling
-                process_order_after_payment_success(quotation_name, payment_intent, payment_method)
+                process_order_after_payment_success(
+                    quotation_name, payment_intent, payment_method
+                )
             else:
                 frappe.log_error(
                     "sales order name is missing in payment intent metadata",
@@ -1715,9 +1792,7 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
 
-        delivery_slot = frappe.get_doc(
-            "Delivery Slot", quotation.custom_delivery_slot
-        )
+        delivery_slot = frappe.get_doc("Delivery Slot", quotation.custom_delivery_slot)
 
         quotation.flags.ignore_permissions = True
         quotation.submit()
@@ -1759,11 +1834,13 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
         # Adding Delivery Method, Delivery Date And Delivery Slots data
         sales_order.custom_delivery_method = quotation.custom_delivery_method
         if quotation.custom_delivery_slot:
-            sales_order.delivery_date, sales_order.custom_delivery_slot = get_date_and_time_slot(delivery_slot)
-        
-        sales_order.custom_payment_method=payment_method
+            sales_order.delivery_date, sales_order.custom_delivery_slot = (
+                get_date_and_time_slot(delivery_slot)
+            )
 
-        sales_order.custom_payment_reference=payment_intent.id
+        sales_order.custom_payment_method = payment_method
+
+        sales_order.custom_payment_reference = payment_intent.id
         sales_order.flags.ignore_permissions = True
         sales_order.save()
         sales_order.submit()
@@ -1780,7 +1857,6 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
         # Submit the Delivery Note
         # delivery_note.submit()
 
-
         # Create Payment Entry for the Sales Order
         create_payment_entry_with_so(sales_order, payment_intent)
 
@@ -1791,7 +1867,7 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
         #             "reference_name": payment_entry.name
         #         },
         #     )
-        
+
         # sales_order.save()
 
         # # Adjusting docs status
@@ -1863,7 +1939,8 @@ def create_sales_invoice(sales_order):
 def create_delivery_note(sales_order, sales_invoice):
     # Create a dictionary to map Sales Order Item based on item_code and qty to Sales Invoice Item
     sales_invoice_item_map = {
-        (inv_item.item_code, inv_item.qty): inv_item.name for inv_item in sales_invoice.items
+        (inv_item.item_code, inv_item.qty): inv_item.name
+        for inv_item in sales_invoice.items
     }
     delivery_note = frappe.get_doc(
         {
@@ -1881,10 +1958,10 @@ def create_delivery_note(sales_order, sales_invoice):
                     "against_sales_order": sales_order.name,  # Link each item to Sales Order
                     "so_detail": item.name,  # Link to the specific Sales Order item row (so_detail)
                     "against_sales_invoice": sales_invoice.name,  # Link to Sales Invoice
-                    "si_detail": sales_invoice_item_map.get((item.item_code, item.qty))
+                    "si_detail": sales_invoice_item_map.get((item.item_code, item.qty)),
                 }
                 for item in sales_order.items
-            ]
+            ],
         }
     )
 
@@ -1960,7 +2037,7 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
                 "paid_to": (
                     "1201 - Stripe FT - KN"  # Account used for Stripe payments
                 ),  # Bank account where the payment is received
-                "mode_of_payment":"Stripe",
+                "mode_of_payment": "Stripe",
                 "paid_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
                 "received_amount": sales_invoice.rounded_total
                 or sales_invoice.grand_total,
@@ -2040,37 +2117,43 @@ def create_payment_entry_with_so(sales_order, payment_intent):
         customer = sales_order.customer
 
         # Create a Payment Entry for the Sales Order
-        payment_entry = frappe.get_doc({
-            "doctype": "Payment Entry",
-            "payment_type": "Receive",
-            "company": company,
-            "posting_date": frappe.utils.nowdate(),
-            "party_type": "Customer",
-            "party": customer,
-            "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
-            "mode_of_payment": "Stripe",
-            "paid_amount": paid_amount,
-            "received_amount": received_amount,
-            "reference_no": reference_no,  # Stripe Payment Intent reference
-            "reference_date": frappe.utils.nowdate(),
-            "remarks": f"Payment received via Stripe for Sales Order {sales_order.name}",
-            "references": [
-                {
-                    "reference_doctype": "Sales Order",
-                    "reference_name": sales_order.name,
-                    "total_amount": sales_order.rounded_total or sales_order.grand_total,
-                    "outstanding_amount": 0,
-                    "allocated_amount": sales_order.rounded_total or sales_order.grand_total,
-                }
-            ],
-        })
+        payment_entry = frappe.get_doc(
+            {
+                "doctype": "Payment Entry",
+                "payment_type": "Receive",
+                "company": company,
+                "posting_date": frappe.utils.nowdate(),
+                "party_type": "Customer",
+                "party": customer,
+                "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
+                "mode_of_payment": "Stripe",
+                "paid_amount": paid_amount,
+                "received_amount": received_amount,
+                "reference_no": reference_no,  # Stripe Payment Intent reference
+                "reference_date": frappe.utils.nowdate(),
+                "remarks": f"Payment received via Stripe for Sales Order {sales_order.name}",
+                "references": [
+                    {
+                        "reference_doctype": "Sales Order",
+                        "reference_name": sales_order.name,
+                        "total_amount": sales_order.rounded_total
+                        or sales_order.grand_total,
+                        "outstanding_amount": 0,
+                        "allocated_amount": sales_order.rounded_total
+                        or sales_order.grand_total,
+                    }
+                ],
+            }
+        )
         logger.debug(f"In create_payment_entry_with_so: payment_entry: {payment_entry}")
 
         # Set exchange rate to avoid currency issues (assuming USD for now)
         payment_entry.target_exchange_rate = 1
 
         # Insert and submit the Payment Entry document
-        payment_entry.flags.ignore_permissions = True  # If necessary to bypass permission restrictions
+        payment_entry.flags.ignore_permissions = (
+            True  # If necessary to bypass permission restrictions
+        )
         payment_entry.insert()
         payment_entry.submit()
 
@@ -2089,10 +2172,15 @@ def create_payment_entry_with_so(sales_order, payment_intent):
 
     except Exception as e:
         logger.debug("Exception in create_payment_entry")
-        frappe.log_error(f"Unexpected error while creating payment entry for {sales_order.name}. Error: {str(e)}", "Payment Entry Error")
-        frappe.throw(_("An unexpected error occurred while creating the payment entry. Please check the logs and try again."))
-
-
+        frappe.log_error(
+            f"Unexpected error while creating payment entry for {sales_order.name}. Error: {str(e)}",
+            "Payment Entry Error",
+        )
+        frappe.throw(
+            _(
+                "An unexpected error occurred while creating the payment entry. Please check the logs and try again."
+            )
+        )
 
 
 def set_session_user(user):
@@ -2164,7 +2252,7 @@ def update_cart_details(cart, session_id=None):
         contact_name = cart.get("contact_name")
         if contact_name:
             quotation.contact_display = contact_name
-        
+
         contact_mobile = cart.get("contact_mobile")
         if contact_mobile:
             quotation.contact_mobile = contact_mobile
@@ -2217,17 +2305,25 @@ def update_cart_details(cart, session_id=None):
         delivery_option = cart.get("delivery_option")
         if delivery_option:
             if delivery_option.get("delivery_method"):
-                quotation.custom_delivery_method = delivery_option.get("delivery_method")
-                if(delivery_option.get("delivery_method") == "Home Delivery" and delivery_option.get("delivery_type")):
-                    quotation.custom_delivery_type = delivery_option.get("delivery_type")
-                elif(delivery_option.get("delivery_method") == "Store Pickup" and delivery_option.get("store")):
+                quotation.custom_delivery_method = delivery_option.get(
+                    "delivery_method"
+                )
+                if delivery_option.get(
+                    "delivery_method"
+                ) == "Home Delivery" and delivery_option.get("delivery_type"):
+                    quotation.custom_delivery_type = delivery_option.get(
+                        "delivery_type"
+                    )
+                elif delivery_option.get(
+                    "delivery_method"
+                ) == "Store Pickup" and delivery_option.get("store"):
                     quotation.custom_pickup_store = delivery_option.get("store")
-                    quotation.custom_store_pickup_datetime = delivery_option.get("store_pickup_time")
+                    quotation.custom_store_pickup_datetime = delivery_option.get(
+                        "store_pickup_time"
+                    )
             if delivery_option.get("delivery_slot"):
                 delivery_slot_name = delivery_option.get("delivery_slot")
-                delivery_slot = frappe.get_doc(
-                    "Delivery Slot", delivery_slot_name
-                )
+                delivery_slot = frappe.get_doc("Delivery Slot", delivery_slot_name)
                 quotation.custom_delivery_slot = delivery_slot.name
             else:
                 delivery_slot = None
@@ -2244,7 +2340,7 @@ def update_cart_details(cart, session_id=None):
         frappe.local.response["http_status_code"] = HTTPStatus.OK
         frappe.response["data"] = {
             "status": "success",
-            "message": _("Cart details updated successfully")
+            "message": _("Cart details updated successfully"),
         }
 
     except Exception as e:
@@ -2279,7 +2375,15 @@ def get_pickup_store():
         pickup_points = frappe.get_all(
             "Warehouse",
             filters={"warehouse_type": "Pickup Point"},
-            fields=["name", "warehouse_name", "address_line_1", "address_line_2", "city", "state", "pin"]
+            fields=[
+                "name",
+                "warehouse_name",
+                "address_line_1",
+                "address_line_2",
+                "city",
+                "state",
+                "pin",
+            ],
         )
 
         for pickup_point in pickup_points:
@@ -2287,34 +2391,25 @@ def get_pickup_store():
             working_hours = frappe.get_all(
                 "Warehouse Working Hours",
                 filters={"parent": pickup_point.name},
-                fields=["day_of_week", "start_time", "end_time"]
+                fields=["day_of_week", "start_time", "end_time"],
             )
-            
+
             # Add working hours to the warehouse
             pickup_point["working_hours"] = working_hours
 
         # Return the list of pickup points with working hours
         frappe.local.response["http_status_code"] = HTTPStatus.OK
-        frappe.response["data"] = {
-            "status": "success",
-            "pickup_points": pickup_points
-        }
+        frappe.response["data"] = {"status": "success", "pickup_points": pickup_points}
 
     except frappe.AuthenticationError as e:
         # Handle authentication errors (invalid/missing API keys)
         frappe.local.response["http_status_code"] = HTTPStatus.UNAUTHORIZED
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
-        
+        frappe.response["data"] = {"status": "error", "message": str(e)}
+
     except frappe.PermissionError as e:
         # Handle permission errors
         frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
 
     except Exception as e:
         # Handle general exceptions
@@ -2322,8 +2417,9 @@ def get_pickup_store():
         frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
         frappe.response["data"] = {
             "status": "error",
-            "message": "There was an error processing the request."
+            "message": "There was an error processing the request.",
         }
+
 
 @frappe.whitelist(allow_guest=True, methods="GET")
 def get_delivery_slot(delivery_type=None):
@@ -2350,65 +2446,61 @@ def get_delivery_slot(delivery_type=None):
         # Check if the delivery type is valid
         if delivery_type not in allowed_delivery_type:
             frappe.throw("Delivery type not supported", frappe.ValidationError)
-        
+
         if delivery_type == "Express Delivery":
             day_name = get_day_name(today())
-            current_time = now()  # Get the current time for filtering Express Delivery slots
+            current_time = (
+                now()
+            )  # Get the current time for filtering Express Delivery slots
         else:
             day_name = get_day_name(add_days(today(), 1))
-            current_time = None  # No need to filter based on current time for Normal Delivery
+            current_time = (
+                None  # No need to filter based on current time for Normal Delivery
+            )
 
         # Build filters for the delivery slots query
-        filters = {
-            "parent": "Zone 1",
-            "day": day_name
-        }
+        filters = {"parent": "Zone 1", "day": day_name}
 
         # If it's Express Delivery, filter slots with start_time greater than the current time
         if delivery_type == "Express Delivery":
-            delivery_slots = frappe.db.sql("""
+            delivery_slots = frappe.db.sql(
+                """
                 SELECT name, day, start_time, end_time
                 FROM `tabDelivery Slot`
                 WHERE parent = %s
                 AND day = %s
                 AND start_time > %s
-            """, ("Zone 1", day_name, current_time), as_dict=True)
+            """,
+                ("Zone 1", day_name, current_time),
+                as_dict=True,
+            )
         else:
             # For Normal Delivery, no need to filter by start_time
             delivery_slots = frappe.get_all(
                 "Delivery Slot",
                 filters=filters,
-                fields=["name", "day", "start_time", "end_time"]
+                fields=["name", "day", "start_time", "end_time"],
             )
 
         # Return the list of delivery slots
         frappe.local.response["http_status_code"] = HTTPStatus.OK
         frappe.response["data"] = {
             "status": "success",
-            "delivery_slots": delivery_slots
+            "delivery_slots": delivery_slots,
         }
 
     except frappe.AuthenticationError as e:
         frappe.local.response["http_status_code"] = HTTPStatus.UNAUTHORIZED
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
 
     except frappe.PermissionError as e:
         frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Error in get_delivery_slot API")
         frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
 
 
 @frappe.whitelist(allow_guest=True, methods="POST")
@@ -2441,9 +2533,6 @@ def fetch_cart(session_id=None):
         else:
             quotation = _get_cart_quotation(party)
 
-        
-        
-
         # Prepare the response data
         cart_response = []
         for cart_item in quotation.items:
@@ -2472,8 +2561,8 @@ def fetch_cart(session_id=None):
                     # "web_long_description": item_details.web_long_description,
                     "website_image": cart_item.image,
                     # "website_warehouse": item_details.website_warehouse,
-                    "wished": False
-                }
+                    "wished": False,
+                },
             }
             cart_response.append(formatted_item)
 
@@ -2482,7 +2571,10 @@ def fetch_cart(session_id=None):
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Fetch Cart Error")
-        frappe.throw(_("An error occurred while fetching the cart. Please try again later."), frappe.ValidationError)
+        frappe.throw(
+            _("An error occurred while fetching the cart. Please try again later."),
+            frappe.ValidationError,
+        )
 
 
 def get_day_name(date_str):
@@ -2490,3 +2582,28 @@ def get_day_name(date_str):
     date_obj = getdate(date_str)
     # Get the day name
     return calendar.day_name[date_obj.weekday()]
+
+
+def get_geolocation_from_address(address):
+    try:
+        # Your Google Maps API key
+        api_key = "AIzaSyBJtlJv0sxuLVnEyQWhKiuCL4seHBi-mKw"
+
+        # Google Geocoding API endpoint
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={api_key}"
+
+        # Send a request to the Google Geocoding API
+        response = requests.get(url)
+        data = response.json()
+
+        if data["status"] == "OK":
+            # Extract the latitude and longitude from the response
+            location = data["results"][0]["geometry"]["location"]
+            latitude = location["lat"]
+            longitude = location["lng"]
+            return latitude, longitude
+        else:
+            return f"Error: Unable to get the geolocation. {data['status']}"
+
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
