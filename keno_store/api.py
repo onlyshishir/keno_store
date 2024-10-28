@@ -17,6 +17,7 @@ from webshop.webshop.product_data_engine.query import ProductQuery
 from webshop.webshop.doctype.override_doctype.item_group import get_child_groups_for_website
 from webshop.webshop.utils.product import get_non_stock_item_status
 from webshop.webshop.shopping_cart.product_info import get_product_info_for_website
+from babel.dates import format_date
 frappe.utils.logger.set_log_level("DEBUG")
 logger = frappe.logger("api", allow_site=True, file_count=50)
 
@@ -994,17 +995,16 @@ def get_top_selling_products(period="last_month", page=1, page_size=10):
 def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling", days=7):
     """
     Fetch hot deals (items with active pricing rules) that will expire within the next X days.
-
     Args:
         limit (int): The number of items to return (default is 10).
         price_list (str): The price list to fetch item prices from (default is "Standard Selling").
-
     Returns:
         dict: A dictionary containing the list of hot deal website items or an error message.
     """
     try:
         today_date = frappe.utils.nowdate()
         expiring_soon_date = frappe.utils.add_days(today_date, int(days))
+        
         # Validate Authorization header
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
@@ -1083,9 +1083,14 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
             limit_page_length=limit
         )
 
+        # Create a dictionary to map item codes to their associated pricing rule expiry dates
+        expiry_dates = {item["item_code"]: pricing_rule_map.get(item.get("parent")) for item in items}
+
         # Step 3: Enhance each item with pricing, rating, and valid_upto details
         for item in website_items:
             try:
+                # Attach the expiry date from the pricing rule to the item if available
+                item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates.get(item["item_code"]))
                 # Get stock quantity
                 stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
                 item["stock_qty"] = stock_qty if stock_qty else 0
@@ -1104,6 +1109,11 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
                             "discount_percent": flt(product_info["price"].get("discount_percent")),
                             "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
                         })
+
+                # Add pricing rule expiration date
+                # item["pricing_rule_expiration"] = pricing_rule_map.get(item.get("parent"))
+                # item["pricing_rule_expiration"] = pricing_rule_map.get('PRLE-0003')
+
             except Exception as e:
                 frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
 
@@ -1120,7 +1130,6 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
                 frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
                 item["rating"] = 0  # Default rating if fetching fails
 
-        # return {"items": website_items}
         # Determine total items and total pages for pagination
         total_items = frappe.db.count(
             "Website Item",
@@ -1138,7 +1147,7 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
             "pagination": {
                 "current_page": page,
                 "page_size": page_size,
-                "total_items": total_pages,
+                "total_items": total_items,
                 "total_pages": total_pages,
             },
         }
@@ -1162,6 +1171,27 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
             "status": "error",
             "message": "An unexpected error occurred. Please try again later."
         }
+
+
+def date_to_words(date_str):
+    """
+    Converts a date string from Frappe to a human-readable date in words.
+    
+    Args:
+        date_str (str): The date string in 'YYYY-MM-DD' format.
+
+    Returns:
+        str: The date in words, e.g., "October 21, 2024."
+    """
+    # Ensure the date string is in the correct format
+    try:
+        date_obj = frappe.utils.getdate(date_str)
+        # Format the date to words using Babel's format_date
+        date_in_words = format_date(date_obj, format="long", locale="en")
+        return date_in_words
+    except Exception as e:
+        frappe.log_error(f"Error converting date: {e}", "Date to Words Conversion")
+        return None
     
 
 @frappe.whitelist(allow_guest=True)
