@@ -427,7 +427,7 @@ def get_website_item_details(item_code):
         # Fetch website specifications
         specifications = frappe.get_all("Item Website Specification", filters={"parent": website_item.name}, 
                                         fields=["label", "description"], order_by="idx asc")
-        item_details["specifications"] = [{"label": spec.label, "value": spec.value} for spec in specifications]
+        item_details["specifications"] = [{"label": spec.label, "value": spec.description} for spec in specifications]
 
         logger.debug(item_details)
 
