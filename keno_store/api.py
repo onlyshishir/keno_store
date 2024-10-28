@@ -3,6 +3,7 @@ import hashlib
 from http import HTTPStatus
 import json
 import uuid
+from bs4 import BeautifulSoup
 import frappe
 from frappe import _
 from frappe.auth import CookieManager, validate_auth_via_api_keys
@@ -427,7 +428,7 @@ def get_website_item_details(item_code):
         # Fetch website specifications
         specifications = frappe.get_all("Item Website Specification", filters={"parent": website_item.name}, 
                                         fields=["label", "description"], order_by="idx asc")
-        item_details["specifications"] = [{"label": spec.label, "value": spec.description} for spec in specifications]
+        item_details["specifications"] = [{"label": spec.label, "value": extract_value(spec.description)} for spec in specifications]
 
         logger.debug(item_details)
 
@@ -444,6 +445,19 @@ def get_website_item_details(item_code):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Unexpected Error in get_website_item_details API")
         return {"error": "An unexpected error occurred. Please try again later."}, 500
+    
+
+def extract_value(content):
+    # Check if content contains HTML tags
+    if "<" in content and ">" in content:
+        # Parse as HTML
+        soup = BeautifulSoup(content, "html.parser")
+        # Get value from the <p> tag, or return None if no <p> tag is found
+        p_tag = soup.find("p")
+        return p_tag.text if p_tag else None
+    else:
+        # Return the content as is if it's not HTML
+        return content
 
 
 def get_stock_availability(item):
