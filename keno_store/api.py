@@ -8,7 +8,7 @@ import frappe
 from frappe import _
 from frappe.auth import CookieManager, validate_auth_via_api_keys
 from frappe.contacts.doctype.contact.contact import get_contact_name
-from frappe.utils import cint
+from frappe.utils import cint, get_datetime
 from frappe.utils import flt
 import frappe.utils
 from webshop.webshop.doctype.item_review.item_review import add_item_review
@@ -992,7 +992,7 @@ def get_top_selling_products(period="last_month", page=1, page_size=10):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling", days=7):
+def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling"):
     """
     Fetch hot deals (items with active pricing rules) that will expire within the next X days.
     Args:
@@ -1002,9 +1002,6 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
         dict: A dictionary containing the list of hot deal website items or an error message.
     """
     try:
-        today_date = frappe.utils.nowdate()
-        expiring_soon_date = frappe.utils.add_days(today_date, int(days))
-        
         # Validate Authorization header
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
@@ -1031,32 +1028,63 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
         limit = page_size
 
         # Fetch active pricing rules
-        active_pricing_rules = frappe.get_all(
+        # active_pricing_rules = frappe.get_all(
+        #     "Pricing Rule",
+        #     filters={
+        #         "disable": 0,
+        #         "apply_on": "Item Code",
+        #         "valid_from": ["<=", today_date],
+        #         "valid_upto": ["between", [today_date, expiring_soon_date]],
+        #         "discount_percentage": [">", 0]
+        #     },
+        #     fields=["name", "valid_upto"]
+        # )
+        promotional_scheme_doc = frappe.get_doc("Promotional Scheme", "Limited Time Offer")
+
+        limited_time_offer_rules = frappe.get_all(
             "Pricing Rule",
             filters={
                 "disable": 0,
-                "apply_on": "Item Code",
-                "valid_from": ["<=", today_date],
-                "valid_upto": ["between", [today_date, expiring_soon_date]],
+                "promotional_scheme": "Limited Time Offer",
+                "valid_from": ["<=", frappe.utils.nowdate()],
                 "discount_percentage": [">", 0]
             },
-            fields=["name", "valid_upto"]
+            fields=["name", "valid_upto", "apply_on"]
         )
 
         # If no active pricing rules are found, return an empty list
-        if not active_pricing_rules:
+        if not limited_time_offer_rules:
             return {"items": []}
 
         # Map pricing rule valid_upto to item codes
-        pricing_rule_map = {rule["name"]: rule["valid_upto"] for rule in active_pricing_rules}
+        pricing_rule_map = {rule["name"]: rule["valid_upto"] for rule in limited_time_offer_rules}
         pricing_rule_names = list(pricing_rule_map.keys())
 
-        # Fetch items linked to these pricing rules
-        items = frappe.get_all(
-            "Pricing Rule Item Code",
-            filters={"parent": ["in", pricing_rule_names]},
-            fields=["item_code", "parent"]
-        )
+        if(limited_time_offer_rules[0].apply_on == 'Item Code'):
+            # Fetch items linked to these pricing rules
+            items = frappe.get_all(
+                "Pricing Rule Item Code",
+                filters={"parent": ["in", pricing_rule_names]},
+                fields=["item_code", "parent"]
+            )
+        elif (limited_time_offer_rules[0].apply_on == 'Item Group'):
+            item_groups = frappe.get_all(
+                "Pricing Rule Item Group",
+                filters={
+                    "parent": limited_time_offer_rules[0].name
+                },
+                fields=["item_group"]
+            )
+            item_group_names = [item_group["item_group"] for item_group in item_groups]
+            # Fetch items linked to these item_groups
+            items = frappe.get_all(
+                "Item",
+                filters={"item_group": ["in", item_group_names], "published_in_website":1},
+                fields=["item_code"]
+            )
+
+        if not items:
+            return {"items": []}
 
         item_codes = [item["item_code"] for item in items]
 
@@ -1084,13 +1112,15 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
         )
 
         # Create a dictionary to map item codes to their associated pricing rule expiry dates
-        expiry_dates = {item["item_code"]: pricing_rule_map.get(item.get("parent")) for item in items}
+        # expiry_dates = {item["item_code"]: pricing_rule_map.get(item.get("parent")) for item in items}
+        expiry_dates = limited_time_offer_rules[0].valid_upto
 
         # Step 3: Enhance each item with pricing, rating, and valid_upto details
         for item in website_items:
             try:
                 # Attach the expiry date from the pricing rule to the item if available
-                item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates.get(item["item_code"]))
+                # item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates.get(item["item_code"]))
+                item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates)
                 # Get stock quantity
                 stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
                 item["stock_qty"] = stock_qty if stock_qty else 0
@@ -1143,6 +1173,7 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
         # Return the response with pagination details
         frappe.response["data"] = {
             "status": "success",
+            "valid_upto": end_of_day_iso(promotional_scheme_doc.valid_upto),
             "items": website_items,
             "pagination": {
                 "current_page": page,
@@ -1171,6 +1202,19 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling",
             "status": "error",
             "message": "An unexpected error occurred. Please try again later."
         }
+
+
+def end_of_day_iso(date_string):
+    # Combine date string with '23:59:59'
+    date_with_time = f"{date_string} 23:59:59"
+    
+    # Convert to datetime using Frappe's get_datetime utility
+    datetime_obj = get_datetime(date_with_time)
+    
+    # Convert to ISO format
+    iso_datetime = datetime_obj.isoformat()
+    
+    return iso_datetime
 
 
 def date_to_words(date_str):
