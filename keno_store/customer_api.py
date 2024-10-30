@@ -616,6 +616,116 @@ def get_order_details_by_id(order_id):
     """
     Custom API to get details of a specific order by ID.
     Restricts access to only the logged-in customer's orders.
+    Returns order details such as date, status, total amount, items, taxes, 
+    shipping address, and contact info.
+    Includes exception handling for various scenarios.
+    """
+    try:
+        # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+
+        # Get the current user
+        user = frappe.local.session.user
+
+        if user is None or user == "Guest":
+            frappe.throw("You need to be logged in to view order details.", frappe.PermissionError)
+
+        # Fetch the customer linked with the logged-in user's email
+        customer = frappe.db.get_value(
+            "Customer",
+            {"email_id": user},
+            ["name"],
+            as_dict=True,
+        )
+
+        if not customer:
+            frappe.throw("Customer profile not found for this user.", frappe.DoesNotExistError)
+
+        # Fetch the order details
+        order = frappe.get_doc("Sales Order", order_id)
+
+        if not order:
+            frappe.throw("Order not found.", frappe.DoesNotExistError)
+
+        # Check if the order belongs to the current customer
+        if order.customer != customer["name"]:
+            frappe.throw("You do not have permission to access this order.", frappe.PermissionError)
+
+        # Prepare order data
+        order_data = {
+            "order_id": order.name,
+            "date": order.transaction_date,
+            "status": order.status,
+            "total_amount": order.grand_total,
+            "items": [
+                {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "quantity": item.qty,
+                    "base_price": item.price_list_rate,
+                    "price": item.rate,
+                    "amount": item.amount
+                }
+                for item in order.items
+            ],
+            # Fetch taxes from the Sales Taxes and Charges table
+            "taxes": [
+                {
+                    "tax_type": tax.description,
+                    "tax_rate": tax.rate,
+                    "tax_amount": tax.tax_amount
+                }
+                for tax in order.taxes
+            ],
+            # Fetch shipping address
+            "shipping_address": {
+                "address_line1": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "address_line1"),
+                "address_line2": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "address_line2"),
+                "city": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "city"),
+                "state": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "state"),
+                "pincode": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "pincode"),
+                "country": order.shipping_address_name and frappe.db.get_value("Address", order.shipping_address_name, "country")
+            },
+            # Fetch contact information
+            "contact_info": {
+                "contact_name": order.contact_display,
+                "contact_mobile": order.contact_mobile
+            }
+        }
+
+        # Return order data
+        frappe.response["data"] = {"status": "success", "order": order_data}
+
+    except frappe.PermissionError as e:
+        # Handle permission errors (e.g., unauthorized access)
+        frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
+        frappe.response["data"] = {"message": "Permission error", "error": str(e)}
+
+    except frappe.DoesNotExistError as e:
+        # Handle case where the order or customer profile is not found
+        frappe.local.response["http_status_code"] = HTTPStatus.NOT_FOUND
+        frappe.response["data"] = {
+            "message": "Requested document does not exist",
+            "error": str(e),
+        }
+
+    except Exception as e:
+        # Handle any unexpected errors
+        frappe.log_error(frappe.get_traceback(), "Get Order Details API Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
+
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def get_order_details_by_id_v2(order_id):
+    """
+    Custom API to get details of a specific order by ID.
+    Restricts access to only the logged-in customer's orders.
     Returns order details such as date, status, total amount, items, taxes,
     shipping address, and contact info.
     Includes exception handling for various scenarios.
@@ -667,6 +777,8 @@ def get_order_details_by_id(order_id):
             fields=["parent"],
             limit =1
         )
+        if len(delivery_notes) == 0:
+            frappe.throw("Delivery Note not found.", frappe.DoesNotExistError)
         delivery_note = frappe.get_doc("Delivery Note", delivery_notes[0].parent)
         # Prepare order data
         order_data = {
