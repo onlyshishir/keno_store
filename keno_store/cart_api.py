@@ -1677,6 +1677,7 @@ def search_payment_intent(quotation_id=None, customer_id=None):
 
     except Exception as e:
         print(f"Error: {e}")
+        frappe.log_error(f"Search Payment Intent Error : {str(e)}", "Unexpected Error")
         return None
 
 
