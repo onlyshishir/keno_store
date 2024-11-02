@@ -2125,7 +2125,7 @@ def create_payment_entry_with_so(sales_order, payment_intent):
                 "posting_date": frappe.utils.nowdate(),
                 "party_type": "Customer",
                 "party": customer,
-                "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
+                "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
                 "mode_of_payment": "Stripe",
                 "paid_amount": paid_amount,
                 "received_amount": received_amount,
