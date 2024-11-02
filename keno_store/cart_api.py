@@ -1584,6 +1584,7 @@ def place_order(payment_method, session_id=None):
             "X-Forwarded-For"
         ) or frappe.request.headers.get("Remote-Addr")
 
+        logger.info("IPAddress : ", ip_address)
         # Create a Stripe PaymentIntent
         amount_in_cents = int(float(quotation_total) * 100)
 
