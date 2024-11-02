@@ -1637,11 +1637,13 @@ def place_order(payment_method, session_id=None):
             "quotation_name": quotation.name,
         }
     except stripe.error.StripeError as e:
+        frappe.log_error(f"Stripe Error: {str(e)}", "Stripe Error")
         frappe.throw(_("Error creating payment intent: {0}").format(e.user_message))
     except frappe.AuthenticationError as e:
         frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
         frappe.response["data"] = {"message": "Authentication error", "error": str(e)}
     except Exception as e:
+        frappe.log_error(f"Unexpected Error: {str(e)}", "Unexpected Error")
         frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
         frappe.response["data"] = {
             "message": "An error occurred while creating the payment intent.",
