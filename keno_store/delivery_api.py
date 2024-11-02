@@ -4,7 +4,7 @@ from frappe import _
 from frappe.auth import validate_auth_via_api_keys
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
-def confirmOrder(delivery_note_id, order_id, liveLocation):
+def confirmOrder(delivery_note_id=None, order_id=None, liveLocation=None):
     try:
         # Validate API key authorization
         validate_auth_via_api_keys(
@@ -98,59 +98,66 @@ def updateOrderStatus(delivery_note_id, order_id, status, deliveryPersonLocation
         if frappe.local.session.user == None or frappe.session.user == "Guest":
             frappe.throw("Please log in to access this feature.", frappe.PermissionError)
 
-        # Check if order_id is provided
+        # Check if delivery_note_id is provided
         if not delivery_note_id:
             frappe.throw(_("Delivery Note ID is required"), frappe.ValidationError)
-            return {
-                "status": "error",
-                "message": _("Delivery Note ID is required"),
-            }
+        
+        if not deliveryPersonLocation:
+            frappe.throw(_("Delivery person's location is required"), frappe.ValidationError)
 
-        # Fetch the delivery note using the provided order_id
+        # Fetch the delivery note using the provided delivery_note_id
         delivery_note = frappe.get_doc("Delivery Note", delivery_note_id)
 
-        # Ensure the delivery note exists and is not already assigned
+        # Ensure the delivery note exists and is assigned to the logged-in user
         if delivery_note.transporter != frappe.local.session.user:
             frappe.throw(_("Not your delivery"), frappe.ValidationError)
 
+        # Update the custom delivery status
         delivery_note.custom_delivery_status = status
         delivery_note.save(ignore_permissions=True)  # Save without permissions check
 
+        # Insert the delivery person's location
         insert_user_location(frappe.local.session.user, deliveryPersonLocation)
 
-        frappe.db.commit()  # Commit the changes
+        # Submit the delivery note if status is 'Delivered'
+        if status == 'Delivered':
+            delivery_note.submit()
 
+        # Publish live tracking updates
         frappe.publish_realtime(
-			"liveTrackingUpdates",
-			{
+            "liveTrackingUpdates",
+            {
                 "status": "success",
-                "message": _("Order Pickup confirmed successfully."),
+                "message": _("Order status updated successfully."),
                 "order_id": order_id,
                 "delivery_note_id": delivery_note_id,
                 "transporter": delivery_note.transporter,
                 "custom_delivery_status": delivery_note.custom_delivery_status,
                 "deliveryPersonLocation": deliveryPersonLocation
             },
-			# user=get_user_by_order_id(order_id).name,
-			room=order_id,
-		)
+            room=order_id,
+        )
+
+        frappe.db.commit()  # Commit the changes
 
         # Prepare the response
         frappe.response["data"] = {
             "status": "success",
-            "message": _("Order Pickup confirmed successfully."),
+            "message": _("Order status updated successfully."),
             "delivery_note_id": delivery_note_id,
             "transporter": delivery_note.transporter,
             "custom_delivery_status": delivery_note.custom_delivery_status
         }
 
     except frappe.PermissionError as e:
-        # Handle permission errors
+        # Rollback in case of permission errors
+        frappe.db.rollback()
         frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
         frappe.response["data"] = {"message": "Permission error", "error": str(e)}
 
     except frappe.ValidationError as e:
-        # Handle validation errors
+        # Rollback in case of validation errors
+        frappe.db.rollback()
         frappe.local.response["http_status_code"] = HTTPStatus.BAD_REQUEST
         frappe.response["data"] = {
             "message": "Validation error",
@@ -158,8 +165,9 @@ def updateOrderStatus(delivery_note_id, order_id, status, deliveryPersonLocation
         }
 
     except Exception as e:
-        # Handle unexpected errors
-        frappe.log_error(frappe.get_traceback(), "Confirm Order API Error")
+        # Rollback in case of unexpected errors
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback(), "Update Order Status API Error")
         frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
         frappe.response["data"] = {
             "message": "An unexpected error occurred. Please try again later.",
@@ -215,13 +223,36 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
         elif status != 'Ready for Pickup' and deliveryPartner:
             supplier = get_transporter_supplier_by_user(deliveryPartner)
             if supplier:
-                delivery_notes = frappe.get_all(
-                    "Delivery Note",
-                    filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0},
-                    fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
-                    limit_start=offset,
-                    limit_page_length=limit
-                )
+                if status == 'Delivered':
+                    delivery_notes = frappe.get_all(
+                        "Delivery Note",
+                        # filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0},
+                        filters={"custom_delivery_status": status, "transporter": deliveryPartner, "docstatus":1},
+                        fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
+                        limit_start=offset,
+                        limit_page_length=limit
+                    )
+                elif status != '*':
+                    delivery_notes = frappe.get_all(
+                        "Delivery Note",
+                        # filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0},
+                        filters={"custom_delivery_status": status, "transporter": deliveryPartner, "docstatus":0},
+                        fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
+                        limit_start=offset,
+                        limit_page_length=limit
+                    )
+                else:
+                    delivery_notes = frappe.get_all(
+                        "Delivery Note",
+                        # filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0},
+                        filters={
+                            "custom_delivery_status": ["not in", "Delivered"],
+                            # "custom_delivery_status": status, 
+                            "transporter": deliveryPartner, "docstatus":0},
+                        fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
+                        limit_start=offset,
+                        limit_page_length=limit
+                    )
                 # Check if there are more pages
                 total_delivery_notes = frappe.db.count(
                     "Delivery Note", filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0}
@@ -263,6 +294,7 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
                     "base_price": item.price_list_rate,
                     "price": item.rate,
                     "amount": item.amount,
+                    "image": item.image
                 }
                 for item in order_doc.items
             ])
@@ -278,6 +310,95 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
                 "total_orders": total_delivery_notes,
                 "total_pages": total_pages,
             }
+        }
+
+    except frappe.PermissionError as e:
+        # Handle permission errors (e.g., guest user trying to access)
+        frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
+        frappe.response["data"] = {"message": "Permission error", "error": str(e)}
+
+    except frappe.ValidationError as e:
+        # Handle case where no customer profile is found
+        frappe.local.response["http_status_code"] = HTTPStatus.BAD_REQUEST
+        frappe.response["data"] = {
+            "message": "Validation error",
+            "error": str(e),
+        }
+
+    except Exception as e:
+        # Handle any unexpected errors
+        frappe.log_error(frappe.get_traceback(), "Get delivery notes by status API Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
+
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def getOrderInfo(delivery_note_id):
+    try:
+        # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+
+        if frappe.local.session.user == None or frappe.session.user == "Guest":
+            frappe.throw("Please log in to access this feature.", frappe.PermissionError)
+        
+        delivery_notes = []
+
+        delivery_notes = frappe.get_all(
+                "Delivery Note",
+                filters={"name": delivery_note_id},
+                fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
+            )
+        
+        # Loop through each delivery note to fetch the linked sales order
+        for note in delivery_notes:
+            # Fetch the linked Sales Order using the 'against_sales_order' field from Delivery Note Item
+            sales_order = frappe.db.get_value("Delivery Note Item", {"parent": note["name"]}, "against_sales_order")
+            order_doc = frappe.get_doc("Sales Order", sales_order)
+            shipping_address_doc = frappe.get_doc("Address", note["shipping_address_name"])
+            shipping_address_string = ", ".join(
+                        [
+                            shipping_address_doc.get("address_line1", ""),
+                            shipping_address_doc.get("address_line2", ""),
+                            shipping_address_doc.get("city", ""),
+                            shipping_address_doc.get("state", ""),
+                            shipping_address_doc.get("pincode", ""),
+                            shipping_address_doc.get("country", ""),
+                        ]
+                    ).strip(", ")
+            note["deliveryLocation"] = {
+                "latitude": shipping_address_doc.custom_latitude,
+                "longitude": shipping_address_doc.custom_longitude,
+                "address": shipping_address_string
+            }
+            note["pickupLocation"] = {
+                "latitude": 40.710859722407754,
+                "longitude": -73.79381336441809,
+                "address": "87-55 168 PL, Jamaica, NY, 11432, United States"
+            }
+            note["order_id"] = sales_order
+            note["createdAt"] = order_doc.creation.isoformat()
+            note["items"] = []
+            note["items"].extend([
+                {
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "quantity": item.qty,
+                    "base_price": item.price_list_rate,
+                    "price": item.rate,
+                    "amount": item.amount,
+                    "image": item.image
+                }
+                for item in order_doc.items
+            ])
+
+        frappe.response["data"] = {
+            "status": "success",
+            "delivery_notes": delivery_notes
         }
 
     except frappe.PermissionError as e:

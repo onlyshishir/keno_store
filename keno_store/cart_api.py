@@ -2095,7 +2095,7 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
     except Exception as e:
         logger.debug("Exception In create_payment_entry")
         frappe.log_error(
-            f"Unexpected error while creating payment entry for {sales_order.name}. Error: {str(e)}",
+            f"Unexpected error while creating payment entry for {sales_invoice.name}. Error: {str(e)}",
             "Payment Entry Error",
         )
         frappe.throw(
@@ -2125,7 +2125,7 @@ def create_payment_entry_with_so(sales_order, payment_intent):
                 "posting_date": frappe.utils.nowdate(),
                 "party_type": "Customer",
                 "party": customer,
-                "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
+                "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
                 "mode_of_payment": "Stripe",
                 "paid_amount": paid_amount,
                 "received_amount": received_amount,
@@ -2161,8 +2161,9 @@ def create_payment_entry_with_so(sales_order, payment_intent):
         # frappe.db.set_value("Sales Order", sales_order.name, "payment_entry", payment_entry.name)
 
         # Update Sales Order status to "To Deliver"
-        frappe.db.set_value("Sales Order", sales_order.name, "status", "To Deliver")
-        frappe.db.commit()
+        sales_order.db_set("per_billed", 100)
+        # frappe.db.set_value("Sales Order", sales_order.name, "status", "To Deliver")
+        # frappe.db.commit()
 
         return payment_entry.name
 
@@ -2586,11 +2587,14 @@ def get_day_name(date_str):
 
 def get_geolocation_from_address(address):
     try:
-        # Your Google Maps API key
-        api_key = "AIzaSyBJtlJv0sxuLVnEyQWhKiuCL4seHBi-mKw"
+        # Fetch Google API key from the Google Settings Doctype
+        google_api_key = frappe.db.get_single_value('Google Settings', 'api_key')
+        # Check if the API key was retrieved successfully
+        if not google_api_key:
+            frappe.throw(_("Google API Key not found in Google Settings"))
 
         # Google Geocoding API endpoint
-        url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={api_key}"
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={google_api_key}"
 
         # Send a request to the Google Geocoding API
         response = requests.get(url)

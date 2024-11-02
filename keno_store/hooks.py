@@ -227,6 +227,13 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+doc_events = {
+    "Delivery Note": {
+        "on_submit": "keno_store.keno_store.delivery_note.on_delivery_note_submit"
+    }
+}
+
+
 override_whitelisted_methods = {
     # "GET /api/method/keno_store.api.get_zone_by_zip": "keno_store.api.get_zone_by_zip",
     "POST /api/method/keno_store.api.signup_customer": "keno_store.api.signup_customer",
