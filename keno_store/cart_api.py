@@ -1805,13 +1805,13 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
             # company used to create customer accounts
             frappe.defaults.set_user_default("company", quotation.company)
 
-        #customer_group = cart_settings.default_customer_group
+        customer_group = cart_settings.default_customer_group
 
-        customer_group = frappe.get_doc("Customer Group", "All Customer Groups")
+        # customer_group = frappe.get_doc("Customer Group", "All Customer Groups")
 
         sales_order = frappe.get_doc(
             _make_sales_order(
-                quotation.name, customer_group=customer_group, ignore_permissions=True
+                quotation.name, None, customer_group, ignore_permissions=True
             )
         )
         sales_order.payment_schedule = []
