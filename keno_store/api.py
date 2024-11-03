@@ -17,6 +17,7 @@ from webshop.webshop.product_data_engine.query import ProductQuery
 from webshop.webshop.doctype.override_doctype.item_group import get_child_groups_for_website
 from webshop.webshop.utils.product import get_non_stock_item_status
 from webshop.webshop.shopping_cart.product_info import get_product_info_for_website
+from frappe.email.doctype.newsletter.newsletter import subscribe
 from babel.dates import format_date
 frappe.utils.logger.set_log_level("DEBUG")
 logger = frappe.logger("api", allow_site=True, file_count=50)
@@ -2215,6 +2216,17 @@ def get_coverage_area_info():
         # Log error for debugging
         frappe.log_error(frappe.get_traceback(), "Failed to retrieve delivery info")
         frappe.throw(_("An error occurred while fetching delivery information."))
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def subscribe_to_newsletter(email):
+    try:
+        newsletter_name = "Keno Newsletter"
+        subscribe(email=email, email_group=newsletter_name)
+        return {"status": "success", "message": "Successfully subscribed"}
+    except Exception as e:
+        frappe.log_error(f"Subscription Error: {str(e)}", "Newsletter Subscription Error")
+        return {"status": "error", "message": "Subscription failed", "error": str(e)}
 
 
 @frappe.whitelist(allow_guest=True)
