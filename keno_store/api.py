@@ -380,7 +380,8 @@ def get_website_item_details(item_code):
                 item_details.update({
                     "currency": product_info["price"].get("currency"),
                     "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                    "formatted_price": product_info["price"].get("formatted_price")
+                    "formatted_price": product_info["price"].get("formatted_price"),
+                    "price_list_rate": product_info["price"].get("price_list_rate")
                 })
             if product_info["price"].get("discount_percent"):
                 item_details.update({
