@@ -1558,12 +1558,12 @@ def place_order(payment_method, session_id=None):
                 if quotation.custom_delivery_method == "Home Delivery":
                     shipping_address_string = ", ".join(
                         [
-                            saddress.get("address_line1", ""),
-                            saddress.get("address_line2", ""),
-                            saddress.get("city", ""),
-                            saddress.get("state", ""),
-                            saddress.get("pincode", ""),
-                            saddress.get("country", ""),
+                            saddress.get("address_line1") or "",
+                            saddress.get("address_line2") or "",
+                            saddress.get("city") or "",
+                            saddress.get("state") or "",
+                            saddress.get("pincode") or "",
+                            saddress.get("country") or "",
                         ]
                     ).strip(", ")
                     latitude, longitude = get_geolocation_from_address(shipping_address_string)
