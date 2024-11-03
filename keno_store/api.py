@@ -1343,8 +1343,201 @@ def get_special_discount_items(limit=10):
         return {"exc": "Something went wrong!"}
     
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+@frappe.whitelist(allow_guest=True)
 def get_offer_items(offer_title, page=1, page_size=10):
+    try:
+        # Validate Authorization header
+        auth_header = frappe.get_request_header("Authorization", str)
+        if not auth_header:
+            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
+        
+        # Validate API key authorization
+        api_keys = auth_header.split(" ")[1:]
+        if not api_keys:
+            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+
+        validate_auth_via_api_keys(api_keys)
+        
+        # Validate and parse page and page_size
+        try:
+            page = int(page)
+            page_size = int(page_size)
+            if page <= 0 or page_size <= 0:
+                raise ValueError("Page and page size must be positive integers")
+        except ValueError as e:
+            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+
+        # Calculate offset and limit for pagination
+        offset = (page - 1) * page_size
+        limit = page_size
+
+        promotional_scheme_doc = frappe.get_doc("Promotional Scheme", offer_title)
+
+        offer_rules = frappe.get_all(
+            "Pricing Rule",
+            filters={
+                "disable": 0,
+                "promotional_scheme": promotional_scheme_doc.name,
+                "valid_from": ["<=", frappe.utils.nowdate()],
+                "discount_percentage": [">", 0]
+            },
+            fields=["name", "valid_upto", "apply_on"]
+        )
+
+        # If no active pricing rules are found, return an empty list
+        if not offer_rules:
+            return {"items": []}
+
+        # Map pricing rule valid_upto to item codes
+        pricing_rule_map = {rule["name"]: rule["valid_upto"] for rule in offer_rules}
+        pricing_rule_names = list(pricing_rule_map.keys())
+
+        if(offer_rules[0].apply_on == 'Item Code'):
+            # Fetch items linked to these pricing rules
+            items = frappe.get_all(
+                "Pricing Rule Item Code",
+                filters={"parent": ["in", pricing_rule_names]},
+                fields=["item_code", "parent"]
+            )
+        elif (offer_rules[0].apply_on == 'Item Group'):
+            item_groups = frappe.get_all(
+                "Pricing Rule Item Group",
+                filters={
+                    "parent": offer_rules[0].name
+                },
+                fields=["item_group"]
+            )
+            item_group_names = [item_group["item_group"] for item_group in item_groups]
+            # Fetch items linked to these item_groups
+            items = frappe.get_all(
+                "Item",
+                filters={"item_group": ["in", item_group_names], "published_in_website":1},
+                fields=["item_code"]
+            )
+
+        if not items:
+            return {"items": []}
+
+        item_codes = [item["item_code"] for item in items]
+
+        # Step 2: Fetch Website Items linked to these item codes
+        website_items = frappe.get_all(
+            "Website Item",
+            filters={
+                "item_code": ["in", item_codes],
+                "published": 1  # Ensure only published items are fetched
+            },
+            fields=[
+                "web_item_name", 
+                "name", 
+                "item_code", 
+                "website_image", 
+                "variant_of", 
+                "has_variants", 
+                "item_group", 
+                "short_description", 
+                "ranking",
+            ],
+            order_by="ranking desc",
+            limit_start=offset,
+            limit_page_length=limit
+        )
+
+        # Create a dictionary to map item codes to their associated pricing rule expiry dates
+        # expiry_dates = {item["item_code"]: pricing_rule_map.get(item.get("parent")) for item in items}
+        expiry_dates = offer_rules[0].valid_upto
+
+        # Step 3: Enhance each item with pricing, rating, and valid_upto details
+        for item in website_items:
+            try:
+                # Attach the expiry date from the pricing rule to the item if available
+                # item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates.get(item["item_code"]))
+                item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates)
+                # Get stock quantity
+                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                item["stock_qty"] = stock_qty if stock_qty else 0
+
+                # Get product pricing information
+                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                if product_info and product_info["price"]:
+                    item.update({
+                        "currency": product_info["price"].get("currency"),
+                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate")
+                    })
+                    if product_info["price"].get("discount_percent"):
+                        item.update({
+                            "discount_percent": flt(product_info["price"].get("discount_percent")),
+                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
+                        })
+
+                # Add pricing rule expiration date
+                # item["pricing_rule_expiration"] = pricing_rule_map.get(item.get("parent"))
+                # item["pricing_rule_expiration"] = pricing_rule_map.get('PRLE-0003')
+
+            except Exception as e:
+                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+
+            try:
+                # Get item rating
+                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                if ratings:
+                    total_rating = sum([r["rating"] for r in ratings])
+                    average_rating = total_rating / len(ratings)
+                    item["rating"] = round(average_rating, 1)
+                else:
+                    item["rating"] = 0  # No ratings, default to 0
+            except Exception as e:
+                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                item["rating"] = 0  # Default rating if fetching fails
+
+        # Determine total items and total pages for pagination
+        total_items = frappe.db.count(
+            "Website Item",
+            filters={
+                "item_code": ["in", item_codes],
+                "published": 1  # Ensure only published items are fetched
+            },
+            )
+        total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
+
+        # Return the response with pagination details
+        frappe.response["data"] = {
+            "status": "success",
+            "valid_upto": end_of_day_iso(promotional_scheme_doc.valid_upto),
+            "items": website_items,
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+            },
+        }
+
+    except frappe.AuthenticationError:
+        frappe.local.response["http_status_code"] = 401
+        frappe.response["data"] = {
+            "status": "error",
+            "message": "Unauthorized access. Invalid or missing API key."
+        }
+    except frappe.ValidationError as e:
+        frappe.local.response["http_status_code"] = 400
+        frappe.response["data"] = {
+            "status": "error",
+            "message": str(e)
+        }
+    except Exception as e:
+        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Limited Time Offers API")
+        frappe.local.response["http_status_code"] = 500
+        frappe.response["data"] = {
+            "status": "error",
+            "message": "An unexpected error occurred. Please try again later."
+        }
+    
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def get_offer_items_old(offer_title, page=1, page_size=10):
     try:
         # Validate Authorization header
         auth_header = frappe.get_request_header("Authorization", str)
