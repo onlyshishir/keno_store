@@ -2227,6 +2227,30 @@ def subscribe_to_newsletter(email):
     except Exception as e:
         frappe.log_error(f"Subscription Error: {str(e)}", "Newsletter Subscription Error")
         return {"status": "error", "message": "Subscription failed", "error": str(e)}
+    
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def get_slideshow(slideshow_name):
+    # Check if slideshow exists
+    slideshow = frappe.get_doc("Website Slideshow", slideshow_name)
+    if not slideshow:
+        frappe.throw(_("Slideshow not found"), frappe.DoesNotExistError)
+
+    # Prepare slideshow data
+    slideshow_data = {
+        "title": slideshow.slideshow_name,
+        "slides": []
+    }
+
+    for slide in slideshow.slideshow_items:
+        slideshow_data["slides"].append({
+            "image": slide.image,
+            "caption": slide.heading,
+            "description": slide.description,
+            "url": slide.url
+        })
+
+    return slideshow_data
 
 
 @frappe.whitelist(allow_guest=True)
