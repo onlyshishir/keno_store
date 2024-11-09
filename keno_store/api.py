@@ -357,7 +357,7 @@ def get_website_item_details(item_code):
         item_details = {
             "item_code": website_item.item_code,
             "item_name": website_item.item_name,
-            "description": website_item.description,
+            "description": website_item.short_description,
             # "image": website_item.website_image,
             "item_group": website_item.item_group,
             "web_long_description": website_item.web_long_description,
