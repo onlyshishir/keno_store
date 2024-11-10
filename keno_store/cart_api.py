@@ -2446,7 +2446,7 @@ def get_delivery_slot(delivery_type=None):
         validate_auth_via_api_keys(api_keys)
 
         # Define the allowed delivery types
-        allowed_delivery_type = ["Express Delivery", "Normal Delivery"]
+        allowed_delivery_type = ["Express Delivery", "Standard Delivery"]
 
         # Check if the delivery type is valid
         if delivery_type not in allowed_delivery_type:
@@ -2479,13 +2479,19 @@ def get_delivery_slot(delivery_type=None):
                 ("Zone 1", day_name, current_time),
                 as_dict=True,
             )
+            # Append the current date or any specific date to each slot entry
+            for slot in delivery_slots:
+                slot["date"] = today()
         else:
-            # For Normal Delivery, no need to filter by start_time
+            # For Standard Delivery, no need to filter by start_time
             delivery_slots = frappe.get_all(
                 "Delivery Slot",
                 filters=filters,
                 fields=["name", "day", "start_time", "end_time"],
             )
+            # Append the current date or any specific date to each slot entry
+            for slot in delivery_slots:
+                slot["date"] = frappe.utils.add_days(today(), 1)
 
         # Return the list of delivery slots
         frappe.local.response["http_status_code"] = HTTPStatus.OK
