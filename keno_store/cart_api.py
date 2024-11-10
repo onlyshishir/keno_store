@@ -1138,7 +1138,7 @@ def _apply_shipping_rule(party=None, quotation=None, cart_settings=None):
                     ]
                 else:
                     shipping_rules = [
-                        frappe.get_doc("Shipping Rule", "Normal Delivery").name
+                        frappe.get_doc("Shipping Rule", "Standard Delivery").name
                     ]
 
             except frappe.DoesNotExistError:
