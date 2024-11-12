@@ -2133,6 +2133,71 @@ def get_child_item_groups_by_parent(parent_item_group, limit=None):
             "error": "An error occurred while fetching item groups."
         }
 
+@frappe.whitelist(allow_guest=True)
+def get_dashboard_categories():
+    try:
+        # Fetch active Item Groups with optional limit
+        cooking_item_groups = frappe.get_all(
+            "Item Group",
+            filters={"show_in_website": 1, "parent_item_group": "Cooking"},  # Filter only active groups shown on website
+            fields=["name", "parent_item_group", "image", "is_group"],
+            order_by="weightage desc",
+            limit=8  # Use limit only if provided, otherwise fetch all
+        )
+
+        bv_item_groups = frappe.get_all(
+            "Item Group",
+            filters={"show_in_website": 1, "parent_item_group": "Beverages"},  # Filter only active groups shown on website
+            fields=["name", "parent_item_group", "image", "is_group"],
+            order_by="weightage desc",
+            limit=8  # Use limit only if provided, otherwise fetch all
+        )
+
+        pcare_item_groups = frappe.get_all(
+            "Item Group",
+            filters={"show_in_website": 1, "parent_item_group": "Personal Care"},  # Filter only active groups shown on website
+            fields=["name", "parent_item_group", "image", "is_group"],
+            order_by="weightage desc",
+            limit=8  # Use limit only if provided, otherwise fetch all
+        )
+
+        best_item_groups = frappe.get_all(
+            "Item Group",
+            filters={"show_in_website": 1},  # Filter only active groups shown on website
+            fields=["name", "parent_item_group", "image", "is_group"],
+            order_by="weightage desc",
+            limit=8  # Use limit only if provided, otherwise fetch all
+        )
+
+        if not cooking_item_groups:
+            frappe.response["data"] = {
+                "message": "No item groups found.",
+                "item_groups": []
+            }
+        else:
+            frappe.response["data"] = {
+                "message": "Item groups fetched successfully.",
+                "item_groups": [{
+                    "cooking_item_groups": cooking_item_groups
+                    },
+                    {
+                        "beverages_item_groups":bv_item_groups
+                    },
+                    {
+                        "pcare_item_groups":pcare_item_groups
+                    },
+                    {
+                        "best_item_groups":best_item_groups
+                    }
+                ]
+            }
+
+    except Exception as e:
+        frappe.log_error(f"Error fetching item groups: {str(e)}")
+        frappe.response["data"] = {
+            "error": "An error occurred while fetching item groups."
+        }
+
 def get_customer(silent=False):
 	"""
 	silent: Return customer if exists else return nothing. Dont throw error.
