@@ -625,6 +625,7 @@ def update_cart(item_code, qty, additional_notes=None):
 
     quotation.flags.ignore_permissions = True
     quotation.payment_schedule = []
+    quotation.calculate_taxes_and_totals()
     if not empty_card:
         quotation.save()
     else:
