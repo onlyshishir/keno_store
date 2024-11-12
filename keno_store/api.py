@@ -2092,6 +2092,47 @@ def get_item_groups(limit=None):
             "error": "An error occurred while fetching item groups."
         }
 
+@frappe.whitelist(allow_guest=True)
+def get_child_item_groups_by_parent(parent_item_group, limit=None):
+    """
+    API to fetch all active Item Groups in ERPNext, or limit the number of results.
+    
+    Args:
+        limit (int, optional): The number of item groups to return. Defaults to None for all.
+        
+    Returns:
+        dict: A dictionary containing the list of item groups.
+    """
+    try:
+        # Set default limit to None to fetch all if no limit is specified
+        limit = int(limit) if limit else None
+
+        # Fetch active Item Groups with optional limit
+        item_groups = frappe.get_all(
+            "Item Group",
+            filters={"show_in_website": 1, "parent_item_group": parent_item_group},  # Filter only active groups shown on website
+            fields=["name", "parent_item_group", "image", "is_group"],
+            order_by="weightage desc",
+            limit=limit  # Use limit only if provided, otherwise fetch all
+        )
+
+        if not item_groups:
+            frappe.response["data"] = {
+                "message": "No item groups found.",
+                "item_groups": []
+            }
+        else:
+            frappe.response["data"] = {
+                "message": "Item groups fetched successfully.",
+                "item_groups": item_groups
+            }
+
+    except Exception as e:
+        frappe.log_error(f"Error fetching item groups: {str(e)}")
+        frappe.response["data"] = {
+            "error": "An error occurred while fetching item groups."
+        }
+
 def get_customer(silent=False):
 	"""
 	silent: Return customer if exists else return nothing. Dont throw error.
