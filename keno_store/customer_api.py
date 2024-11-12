@@ -146,6 +146,7 @@ def get_own_customer_profile():
                 "mobile_no",
                 "email_id",
                 "customer_primary_address",
+                "image"
             ],
             as_dict=True,
         )
@@ -185,6 +186,7 @@ def get_own_customer_profile():
             ),
             "mobile_no": customer["mobile_no"],
             "email": customer["email_id"],
+            "user_image": customer["image"],
             "address": address_list[0] if address_list else None,
         }
 
