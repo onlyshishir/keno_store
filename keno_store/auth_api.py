@@ -71,16 +71,17 @@ def get_user_details(user):
         if customer:
             # address = frappe.db.get_value("Customer", customer, "primary_address")
             address = frappe.db.get_value("Customer", customer, "customer_primary_address")
-            address_doc = frappe.get_doc("Address", address)
-            address = {
-                "address_line1": address_doc.address_line1,
-                "address_line2": address_doc.address_line2,
-                "city": address_doc.city,
-                "state": address_doc.state,
-                "pincode": address_doc.pincode,
-                "country": address_doc.country
-            }
-            user_details[0]["address"] = address;  # Add address to the user details
+            if address:
+                address_doc = frappe.get_doc("Address", address)
+                address = {
+                    "address_line1": address_doc.address_line1,
+                    "address_line2": address_doc.address_line2,
+                    "city": address_doc.city,
+                    "state": address_doc.state,
+                    "pincode": address_doc.pincode,
+                    "country": address_doc.country
+                }
+                user_details[0]["address"] = address;  # Add address to the user details
 
     if user_details:
         return user_details  # Return the first element (user details with address if applicable)
