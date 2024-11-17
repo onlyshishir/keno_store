@@ -155,7 +155,7 @@ def reset_password(user: str) -> str:
         # reset_pasword_link = re.sub(
         #     r"^(http://)[^/]+", r"\1" + "kenotoday.vercel.app", reset_pasword_link
         # )
-        # reset_pasword_link = reset_pasword_link.replace("https://erp.keno.today", "https://kenotoday.vercel.app")
+        reset_pasword_link = reset_pasword_link.replace("https://erp.keno.today", "https://keno.today")
         email_template = None
 
         template_name = frappe.db.get_system_setting("reset_password_template")
