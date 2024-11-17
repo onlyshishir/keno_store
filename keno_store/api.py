@@ -2338,26 +2338,50 @@ def subscribe_to_newsletter(email):
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def get_slideshow(slideshow_name):
-    # Check if slideshow exists
-    slideshow = frappe.get_doc("Website Slideshow", slideshow_name)
-    if not slideshow:
-        frappe.throw(_("Slideshow not found"), frappe.DoesNotExistError)
+    try:
+        # Check if slideshow exists
+        slideshow = frappe.get_doc("Website Slideshow", slideshow_name)
+        if not slideshow:
+            frappe.throw(_("Slideshow not found"), frappe.DoesNotExistError)
 
-    # Prepare slideshow data
-    slideshow_data = {
-        "title": slideshow.slideshow_name,
-        "slides": []
-    }
+        # Prepare slideshow data
+        slideshow_data = {
+            "title": slideshow.slideshow_name,
+            "slides": []
+        }
 
-    for slide in slideshow.slideshow_items:
-        slideshow_data["slides"].append({
-            "image": slide.image,
-            "caption": slide.heading,
-            "description": slide.description,
-            "url": slide.url
-        })
+        for slide in slideshow.slideshow_items:
+            slideshow_data["slides"].append({
+                "image": slide.image,
+                "caption": slide.heading,
+                "description": slide.description,
+                "url": slide.url
+            })
 
-    return slideshow_data
+        return slideshow_data
+        # frappe.response["data"] = {
+        #     "message": "Item groups fetched successfully.",
+        #     "item_groups": item_groups
+        # }
+
+    except frappe.DoesNotExistError:
+        frappe.local.response["http_status_code"] = 404
+        frappe.response["data"] = {
+            "message": "Slideshow not found"
+        }
+
+    except frappe.PermissionError:
+        frappe.local.response["http_status_code"] = 403
+        frappe.response["data"] = {
+            "message": "Permission denied"
+        }
+
+    except Exception as e:
+        frappe.log_error(f"Unexpected error in get_slideshow: {str(e)}", "Slideshow API Error")
+        frappe.local.response["http_status_code"] = 500
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later."
+        }
 
 
 @frappe.whitelist(allow_guest=True)
