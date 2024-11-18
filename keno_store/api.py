@@ -8,6 +8,7 @@ import frappe
 from frappe import _
 from frappe.auth import CookieManager, validate_auth_via_api_keys
 from frappe.contacts.doctype.contact.contact import get_contact_name
+from frappe.email.doctype.email_template.email_template import get_email_template
 from frappe.utils import cint, get_datetime
 from frappe.utils import flt
 import frappe.utils
@@ -110,7 +111,8 @@ def signup_customer(full_name, email, mobile=None, password=None, confirm_passwo
         frappe.db.commit()
 
         # Optionally send a welcome email
-        send_welcome_email(email, full_name)  # Commented out to skip welcome email
+        # send_welcome_email(email, full_name)  # Commented out to skip welcome email
+        send_welcome_email_from_settings(email, full_name)  # Commented out to skip welcome email
 
         return {"status": "success", "message": _("User and Customer created successfully")}
 
@@ -153,6 +155,45 @@ def send_welcome_email(email, full_name):
             message=message,
             delayed=False,
             retry=3
+        )
+        
+        return {"status": "success", "message": _("Welcome email sent successfully to {0}").format(email)}
+    
+    except frappe.OutgoingEmailError as e:
+        error_message = _("Failed to send welcome email to {0}. SMTP server error: {1}").format(email, str(e))
+        frappe.log_error(message=error_message, title="SMTP Error")
+        return {"status": "error", "message": error_message}
+    
+    except Exception as e:
+        error_message = _("An unexpected error occurred while sending welcome email to {0}: {1}").format(email, str(e))
+        frappe.log_error(message=error_message, title="Send Welcome Email Error")
+        return {"status": "error", "message": error_message}
+    
+
+def send_welcome_email_from_settings(email, full_name):
+    try:
+        template_name = frappe.db.get_system_setting("welcome_email_template")
+        subject = "Welcome Email"
+        args = {
+            "full_name": full_name,
+            "title": subject,
+            "logo_url": 'https://keno.today/assets/logo.png',
+            "created_by": "Administrator",
+        }
+        if template_name:
+            email_template = get_email_template(template_name, args)
+            subject = email_template.get("subject")
+            content = email_template.get("message")
+
+        frappe.sendmail(
+            recipients=email,
+            sender=None,
+            subject=subject,
+            template="welcome_email_template" if not email_template else None,
+            content=content if email_template else None,
+            args=args,
+            delayed=False,
+            retry=3,
         )
         
         return {"status": "success", "message": _("Welcome email sent successfully to {0}").format(email)}
