@@ -2,8 +2,10 @@ import re
 import frappe
 from frappe.auth import LoginManager, validate_auth_via_api_keys
 from frappe.core.doctype.user.user import User, update_password
+from frappe.email.doctype.email_template.email_template import get_email_template
 from frappe.rate_limiter import rate_limit
 from frappe.utils.password import get_password_reset_limit
+from frappe.utils import get_formatted_email
 
 
 @frappe.whitelist(allow_guest=True)
@@ -165,14 +167,19 @@ def reset_password(user: str) -> str:
             "user": user.name,
             "title": subject,
             "link": reset_pasword_link,
+            "logo_url": 'https://keno.today/assets/logo.png',
             "created_by": "Administrator",
         }
         if template_name:
-            email_template = frappe.get_doc("Email Template", template_name)
-            if email_template:
-                email_template.get_formatted_email(args)
-                subject = email_template.get("subject")
-                content = email_template.get("message")
+            email_template = get_email_template(template_name, args)
+            subject = email_template.get("subject")
+            content = email_template.get("message")
+            # email_template = frappe.get_doc("Email Template", template_name)
+            # if email_template:
+            #     # email_template.get_formatted_email(args)
+            #     email_template = get_email_template(email_template, args)
+            #     subject = email_template.get("subject")
+            #     content = email_template.get("message")
 
         frappe.sendmail(
             recipients=frappe.db.get_value("User", user, "email"),
