@@ -827,6 +827,7 @@ def _get_cart_quotation(party=None):
             "Contact", {"email_id": frappe.session.user}
         )
         qdoc.contact_email = frappe.session.user
+        qdoc.custom_delivery_method = 'Home Delivery'
 
         qdoc.flags.ignore_permissions = True
         qdoc.run_method("set_missing_values")
