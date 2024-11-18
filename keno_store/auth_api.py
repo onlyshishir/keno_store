@@ -188,7 +188,7 @@ def reset_password(user: str) -> str:
             template="password_reset" if not email_template else None,
             content=content if email_template else None,
             args=args,
-            header=[subject, "green"],
+            # header=[subject, "green"],
             delayed=False,
             retry=3,
         )
