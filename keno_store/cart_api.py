@@ -879,7 +879,7 @@ def apply_cart_settings(party=None, quotation=None):
 
     set_taxes(quotation, cart_settings)
 
-    if quotation.custom_delivery_method:
+    if quotation.custom_delivery_method and len(quotation.items) > 0:
         _apply_shipping_rule(party, quotation, cart_settings)
 
 
