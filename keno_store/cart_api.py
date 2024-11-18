@@ -1876,7 +1876,7 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
         # sales_order.save()
 
         # # Adjusting docs status
-        # frappe.db.set_value("Sales Order", sales_order.name, "status", "To Deliver")
+        frappe.db.set_value("Sales Order", sales_order.name, "status", "To Deliver")
         # # frappe.db.set_value("Delivery Note", delivery_note.name, "status", "To Deliver")
         # frappe.db.commit()
 
