@@ -54,6 +54,21 @@ def confirmOrder(delivery_note_id=None, order_id=None, liveLocation=None):
             room=order_id,
         )
 
+        frappe.publish_realtime(
+            "liveTrackingUpdates",
+            {
+                "status": "Confirmed by Rider",
+                "message": _("Order Pickup confirmed by rider."),
+                "order_id": order_id,
+                "delivery_note_id": delivery_note_id,
+                "transporter": delivery_note.transporter,
+                "custom_delivery_status": delivery_note.custom_delivery_status,
+                "deliveryPersonLocation": liveLocation,
+            },
+            # user=get_user_by_order_id(order_id).name,
+            room=order_id,
+        )
+
         # Prepare the response
         frappe.response["data"] = {
             "status": "success",

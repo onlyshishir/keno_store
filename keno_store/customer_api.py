@@ -929,14 +929,52 @@ def get_order_details_by_quotation_name(quotation_name):
                 frappe.PermissionError,
             )
 
+        #by default make the order_status=Packed
+        order_status= 'Packed';
+        delivery_partner = None
+
+        #check order's pick list
+        query = """
+            SELECT 
+                pl.name AS pick_list_name, 
+                pl.status, 
+                pl.creation, 
+                pl.owner
+            FROM 
+                `tabPick List` pl
+            INNER JOIN 
+                `tabPick List Item` pli 
+            ON 
+                pli.parent = pl.name
+            WHERE 
+                pli.sales_order = %s
+        """
+        pick_lists = frappe.db.sql(query, order.name, as_dict=True)
+
+        if pick_lists:  # Check if there are any pick lists
+            for pick_list in pick_lists:
+                if pick_list["status"] == "Draft":  # If any Pick List is in 'Draft'
+                    order_status = 'To Pack'  # Do not set to 'Packed'
+                    break  # Exit the loop as we found a 'Draft' status
+        else:
+            order_status = 'To Pack'
+
+        #Check Delivery Note status. If found, then set as response order_status
+        dn_status, delivery_partner_user = get_delivery_note_custom_delivery_status(order.name)
+        if dn_status is not None:
+            order_status = dn_status
+            if delivery_partner_user is not None:
+                delivery_partner =  frappe.db.get_value("User", {"email": delivery_partner_user}, ["full_name", "mobile_no"], as_dict=True)
+
         # Prepare order data
         order_data = {
             "order_id": order.name,
             "quotation_name": quotation_name,
             "date": order.transaction_date,
-            "status": order.status,
+            "status": order_status,
             "net_total": order.net_total,
             "grand_total": order.grand_total,
+            "deliveryPartner": delivery_partner,
             "items": [
                 {
                     "item_code": item.item_code,
@@ -1016,6 +1054,42 @@ def get_order_details_by_quotation_name(quotation_name):
             "message": "An unexpected error occurred. Please try again later.",
             "error": str(e),
         }
+
+
+def get_delivery_note_custom_delivery_status(sales_order_name):
+    """
+    Check if any Delivery Note is created for a Sales Order and retrieve the value of custom_delivery_status.
+
+    :param sales_order_name: The Sales Order to check.
+    :return: The custom_delivery_status field value if a Delivery Note is found, else None.
+    """
+    # Query to find Delivery Notes linked to the Sales Order via Delivery Note Item
+    delivery_notes = frappe.db.sql("""
+        SELECT DISTINCT dn.parent
+        FROM `tabDelivery Note Item` dn
+        WHERE dn.against_sales_order = %s
+    """, (sales_order_name,), as_dict=True)
+
+    if not delivery_notes:
+        frappe.msgprint(f"No Delivery Notes found for Sales Order {sales_order_name}.")
+        return None
+
+    # Fetch the custom field value from the first Delivery Note
+    delivery_note_name = delivery_notes[0].get("parent")
+    fields = ["custom_delivery_status", "transporter"]
+    # custom_field_value = frappe.db.get_value("Delivery Note", delivery_note_name, "custom_delivery_status")
+    field_values = frappe.db.get_value(
+        "Delivery Note", 
+        delivery_note_name, 
+        fields,
+        as_dict=True
+    )
+
+    if field_values is not None:
+        return field_values.get("custom_delivery_status"), field_values.get("transporter")
+    else:
+        frappe.msgprint(f"Custom field custom_delivery_status is not set in Delivery Note {delivery_note_name}.")
+        return None
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])

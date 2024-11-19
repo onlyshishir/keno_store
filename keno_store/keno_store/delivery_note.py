@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.utils import nowdate
 
 def on_delivery_note_submit(doc, method):
@@ -116,6 +117,27 @@ def link_payment_entry_to_sales_invoice(payment_entry_name, sales_invoice_name, 
     finally:
         # Revert ignore permissions flag
         frappe.flags.ignore_permissions = False
+
+
+def on_delivery_note_created(doc, method):
+    """
+    Triggered after a Delivery Note is created.
+    :param doc: The Delivery Note document.
+    :param method: The hook method ('after_insert').
+    """
+    #Fetch the sales order
+    sales_order = frappe.db.get_value("Delivery Note Item", {"parent": doc.name}, "against_sales_order")
+    
+    # Notify users about Order status update
+    frappe.publish_realtime(
+            "liveTrackingUpdates",
+            {
+                "status": "Ready for Pickup",
+                "message": _("Order is ready for pickup."),
+                "order_id": sales_order,
+            },
+            room=sales_order,
+        )
 
 
 
