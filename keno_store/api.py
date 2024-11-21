@@ -2319,35 +2319,35 @@ def get_coverage_area_info():
         home_delivery = {
             "same_day_delivery": [
                 {
-                    "range": "$500 and up",
+                    "range": "$201 and up",
                     "delivery_charge": "Free",
                     "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
                 },
                 {
-                    "range": "$200-$499",
-                    "delivery_charge": "$10",
-                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
-                },
-                {
-                    "range": "Below $200",
-                    "delivery_charge": "$15",
-                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
-                }
-            ],
-            "next_day_delivery": [
-                {
-                    "range": "$500 and up",
-                    "delivery_charge": "Free",
-                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
-                },
-                {
-                    "range": "$200 and up",
+                    "range": "$101-$200",
                     "delivery_charge": "$5",
                     "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
                 },
                 {
-                    "range": "Below $200",
+                    "range": "Below $100",
                     "delivery_charge": "$10",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                }
+            ],
+            "next_day_delivery": [
+                # {
+                #     "range": "$500 and up",
+                #     "delivery_charge": "Free",
+                #     "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                # },
+                {
+                    "range": "$101 and up",
+                    "delivery_charge": "Free",
+                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                },
+                {
+                    "range": "Below $100",
+                    "delivery_charge": "$5",
                     "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
                 }
             ]
