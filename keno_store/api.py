@@ -402,8 +402,8 @@ def get_website_item_details(item_code):
             # "image": website_item.website_image,
             "item_group": website_item.item_group,
             "web_long_description": website_item.web_long_description,
-            "is_in_stock": frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty") > 0,
-            "uom": website_item.stock_uom,
+            "is_in_stock": (frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty") or 0) > 0,
+            "uom": website_item.stock_uom
         }
         # get_stock_availability(item_details, website_item.get("website_warehouse"));
         
