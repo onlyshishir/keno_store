@@ -40,19 +40,34 @@ def confirmOrder(delivery_note_id=None, order_id=None, liveLocation=None):
         frappe.db.commit()  # Commit the changes
 
         frappe.publish_realtime(
-			"orderConfirmed",
-			{
-            "status": "success",
-            "message": _("Order Pickup confirmed successfully."),
-            "order_id": order_id,
-            "delivery_note_id": delivery_note_id,
-            "transporter": delivery_note.transporter,
-            "custom_delivery_status": delivery_note.custom_delivery_status,
-            "deliveryPersonLocation": liveLocation
-        },
-			# user=get_user_by_order_id(order_id).name,
-			room=order_id,
-		)
+            "orderConfirmed",
+            {
+                "status": "success",
+                "message": _("Order Pickup confirmed successfully."),
+                "order_id": order_id,
+                "delivery_note_id": delivery_note_id,
+                "transporter": delivery_note.transporter,
+                "custom_delivery_status": delivery_note.custom_delivery_status,
+                "deliveryPersonLocation": liveLocation,
+            },
+            # user=get_user_by_order_id(order_id).name,
+            room=order_id,
+        )
+
+        frappe.publish_realtime(
+            "liveTrackingUpdates",
+            {
+                "status": "Confirmed by Rider",
+                "message": _("Order Pickup confirmed by rider."),
+                "order_id": order_id,
+                "delivery_note_id": delivery_note_id,
+                "transporter": delivery_note.transporter,
+                "custom_delivery_status": delivery_note.custom_delivery_status,
+                "deliveryPersonLocation": liveLocation,
+            },
+            # user=get_user_by_order_id(order_id).name,
+            room=order_id,
+        )
 
         # Prepare the response
         frappe.response["data"] = {
@@ -265,12 +280,12 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
             shipping_address_doc = frappe.get_doc("Address", note["shipping_address_name"])
             shipping_address_string = ", ".join(
                         [
-                            shipping_address_doc.get("address_line1", ""),
-                            shipping_address_doc.get("address_line2", ""),
-                            shipping_address_doc.get("city", ""),
-                            shipping_address_doc.get("state", ""),
-                            shipping_address_doc.get("pincode", ""),
-                            shipping_address_doc.get("country", ""),
+                            shipping_address_doc.get("address_line1") or "",
+                            shipping_address_doc.get("address_line2") or "",
+                            shipping_address_doc.get("city") or "",
+                            shipping_address_doc.get("state") or "",
+                            shipping_address_doc.get("pincode") or "",
+                            shipping_address_doc.get("country") or "",
                         ]
                     ).strip(", ")
             note["deliveryLocation"] = {
@@ -457,7 +472,7 @@ def get_transporter_supplier_by_user(user=None):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Error while fetching transporter supplier")
         return None
-    
+
 
 def insert_user_location(user, liveLocation):
     # Check if 'latitude' and 'longitude' fields exist in the 'liveLocation'
