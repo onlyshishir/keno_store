@@ -13,7 +13,8 @@ def on_delivery_note_submit(doc, method):
             "customer": doc.customer,
             "posting_date": nowdate(),
             "due_date": nowdate(),
-            "debit_to": "1310 - Debtors - CMJ",  # Replace with your debtor account
+            # "debit_to": "1310 - Debtors - CMJ",  # local debtor account
+            "debit_to": "1310 - Debtors - KN",  # PRD debtor account
             "items": []
         })
 
