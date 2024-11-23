@@ -2298,20 +2298,20 @@ def get_coverage_area_info():
     try:
         # Pickup Locations
         pickup_locations = [
-            {
-                "address": "87-55 168 PL, Jamaica, NY 11432",
-                "hours": "11AM - 1:30AM (Night)",
-                "days": "7 Days a week"
-            },
-            {
-                "address": "255-12 Hillside Ave, Queens, NY 11004",
-                "hours": "10AM - 6:00PM",
-                "days": "Monday-Thursday"
-            },
+            # {
+            #     "address": "87-55 168 PL, Jamaica, NY 11432",
+            #     "hours": "11AM - 1:30AM (Night)",
+            #     "days": "7 Days a week"
+            # },
+            # {
+            #     "address": "255-12 Hillside Ave, Queens, NY 11004",
+            #     "hours": "10AM - 6:00PM",
+            #     "days": "Monday-Thursday"
+            # },
             {
                 "address": "105-07 150th ST Jamaica, NY 11435",
-                "hours": "10AM - 6:00PM",
-                "days": "Monday-Saturday"
+                "hours": "10AM - 8PM",
+                "days": "7 Days a week"
             }
         ]
 
