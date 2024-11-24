@@ -1072,7 +1072,7 @@ def get_delivery_note_custom_delivery_status(sales_order_name):
 
     if not delivery_notes:
         frappe.msgprint(f"No Delivery Notes found for Sales Order {sales_order_name}.")
-        return None
+        return None, None
 
     # Fetch the custom field value from the first Delivery Note
     delivery_note_name = delivery_notes[0].get("parent")
@@ -1089,7 +1089,7 @@ def get_delivery_note_custom_delivery_status(sales_order_name):
         return field_values.get("custom_delivery_status"), field_values.get("transporter")
     else:
         frappe.msgprint(f"Custom field custom_delivery_status is not set in Delivery Note {delivery_note_name}.")
-        return None
+        return None , None
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
