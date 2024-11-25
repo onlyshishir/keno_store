@@ -233,7 +233,8 @@ doc_events = {
         "after_insert": "keno_store.keno_store.delivery_note.on_delivery_note_created"
     },
     "Pick List": {
-        "on_submit": "keno_store.keno_store.pick_list.on_pick_list_submit"
+        "on_submit": "keno_store.keno_store.pick_list.on_pick_list_submit",
+        "after_insert": "keno_store.keno_store.pick_list.fetch_item_barcodes"
     },
 }
 
