@@ -59,3 +59,15 @@ def on_pick_list_submit(doc, method):
     #         room=sales_order,
     #     )
 
+
+def fetch_item_barcodes(doc, method):
+    for item in doc.locations:  # 'items' is the child table in Pick List
+        if item.item_code:
+            # Fetch the first barcode from the Item Barcode table where the 'parent' is the 'item_code'
+            barcode = frappe.db.get_value('Item Barcode', {'parent': item.item_code}, 'barcode')
+            
+            # If a barcode is found, set it in the child table, else leave it empty
+            item.custom_item_barcode = barcode if barcode else ''
+
+    # Ensure changes are saved to the document
+    doc.save()
