@@ -46,6 +46,14 @@ def set_cart_count(quotation=None):
 @frappe.whitelist(allow_guest=True)
 def get_cart_quotation(doc=None, session_id=None):
     try:
+        # Request headers
+        headers = dict(frappe.request.headers)
+        # Request body
+        body = frappe.request.get_data(as_text=True)
+        # Query parameters
+        query_params = dict(frappe.request.args)
+        # Cookies
+        cookies = dict(frappe.request.cookies)
         validate_auth_via_api_keys(
             frappe.get_request_header("Authorization", str).split(" ")[1:]
         )
@@ -54,6 +62,8 @@ def get_cart_quotation(doc=None, session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Should include session id for Guest user.")
+        if session_id:
+            frappe.set_user("Guest")
 
         # Get the party (customer)
         party = get_party()
@@ -572,69 +582,94 @@ def request_for_quotation():
 
 @frappe.whitelist(True)
 def update_cart(item_code, qty, additional_notes=None):
-    validate_auth_via_api_keys(
-        frappe.get_request_header("Authorization", str).split(" ")[1:]
-    )
-    usr = frappe.local.session.user
-    quotation = _get_cart_quotation()
+    try:
+        # Validate authorization via API keys
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+        usr = frappe.local.session.user
+        quotation = _get_cart_quotation()
 
-    empty_card = False
-    qty = flt(qty)
-    if qty == 0:
-        quotation_items = quotation.get("items", {"item_code": ["!=", item_code]})
-        if quotation_items:
-            quotation.set("items", quotation_items)
+        empty_cart = False
+        qty = flt(qty)
+
+        if qty == 0:
+            # Remove item from cart if quantity is 0
+            quotation_items = quotation.get("items", {"item_code": ["!=", item_code]})
+            if quotation_items:
+                quotation.set("items", quotation_items)
+            else:
+                empty_cart = True
         else:
-            empty_card = True
-    else:
-        warehouse = frappe.get_cached_value(
-            "Website Item", {"item_code": item_code}, "website_warehouse"
-        )
+            # Fetch warehouse and stock information
+            warehouse = frappe.get_cached_value(
+                "Website Item", {"item_code": item_code}, "website_warehouse"
+            )
 
-        # Verify projected qty(available_qty - reserved_qty) stock quantity
-        projected_qty = frappe.get_cached_value(
-            "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
-        )
+            # Verify projected qty (available_qty - reserved_qty)
+            projected_qty = frappe.get_cached_value(
+                "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
+            )
 
-        # Check if sufficient stock is available
-        if projected_qty < qty:
-            frappe.throw(
-                _("Only {0} units of {1} are available in stock.").format(
-                    projected_qty, item_code
+            # Check if sufficient stock is available
+            if projected_qty < qty:
+                frappe.throw(
+                    _("Only {0} units of {1} are available in stock.").format(
+                        projected_qty, item_code
+                    )
                 )
-            )
 
-        quotation_items = quotation.get("items", {"item_code": item_code})
-        if not quotation_items:
-            quotation.append(
-                "items",
-                {
-                    "doctype": "Quotation Item",
-                    "item_code": item_code,
-                    "qty": qty,
-                    "additional_notes": additional_notes,
-                    "warehouse": warehouse,
-                },
-            )
+            # Update or add item to quotation
+            quotation_items = quotation.get("items", {"item_code": item_code})
+            if not quotation_items:
+                quotation.append(
+                    "items",
+                    {
+                        "doctype": "Quotation Item",
+                        "item_code": item_code,
+                        "qty": qty,
+                        "additional_notes": additional_notes,
+                        "warehouse": warehouse,
+                    },
+                )
+            else:
+                quotation_items[0].qty = qty
+                quotation_items[0].warehouse = warehouse
+                quotation_items[0].additional_notes = additional_notes
+
+        # Apply cart settings and save or delete the quotation
+        apply_cart_settings(quotation=quotation)
+        quotation.flags.ignore_permissions = True
+        quotation.payment_schedule = []
+        if not empty_cart:
+            quotation.save()
         else:
-            quotation_items[0].qty = qty
-            quotation_items[0].warehouse = warehouse
-            quotation_items[0].additional_notes = additional_notes
+            quotation.delete()
+            quotation = None
 
-    apply_cart_settings(quotation=quotation)
+        set_cart_count(quotation)
 
-    quotation.flags.ignore_permissions = True
-    quotation.payment_schedule = []
-    if not empty_card:
-        quotation.save()
-    else:
-        quotation.delete()
-        quotation = None
+        # Set response on success
+        frappe.local.response["http_status_code"] = HTTPStatus.OK
+        frappe.response["data"] = {"message": "Successfully updated the user's cart"}
 
-    set_cart_count(quotation)
+    except frappe.DoesNotExistError as e:
+        # Handle missing records
+        frappe.log_error(f"Record not found: {e}", "Cart Update Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.NOT_FOUND
+        frappe.response["data"] = {"error": str(e)}
 
-    frappe.local.response["http_status_code"] = HTTPStatus.OK
-    frappe.response["data"] = {"message": "Successfully updated the user's cart"}
+    except frappe.ValidationError as e:
+        # Handle validation issues
+        frappe.log_error(f"Validation error: {e}", "Cart Update Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.BAD_REQUEST
+        frappe.response["data"] = {"error": str(e)}
+
+    except Exception as e:
+        # Handle unexpected errors
+        frappe.log_error(f"Unexpected error: {e}", "Cart Update Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {"error": "An unexpected error occurred"}
 
 
 @frappe.whitelist()
@@ -1341,6 +1376,19 @@ def update_guest_cart(
                 "Website Item", {"item_code": item_code}, "website_warehouse"
             )
 
+            # Verify projected qty (available_qty - reserved_qty)
+            projected_qty = frappe.get_cached_value(
+                "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
+            )
+
+            # Check if sufficient stock is available
+            if projected_qty < qty:
+                frappe.throw(
+                    _("Only {0} units of {1} are available in stock.").format(
+                        projected_qty, item_code
+                    )
+                )
+
             quotation_items = quotation.get("items", {"item_code": item_code})
             if not quotation_items:
                 quotation.append(
@@ -1455,6 +1503,9 @@ def place_order(payment_method, session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
+        
+        if session_id:
+            frappe.set_user("Guest")
 
         # Define the allowed payment methods
         allowed_payment_methods = ["card", "google_pay", "apple_pay", "paypal"]
@@ -2209,7 +2260,7 @@ def set_session_user(user):
 
 
 @frappe.whitelist(allow_guest=True)
-def update_cart_details(cart, session_id=None):
+def update_cart_details(cart, session_id=None,):
     try:
         # Check if Authorization header is present
         auth_header = frappe.get_request_header("Authorization", str)
@@ -2230,6 +2281,9 @@ def update_cart_details(cart, session_id=None):
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             if session_id is None:
                 frappe.throw("Guest user must provide session ID.", frappe.DataError)
+        
+        if session_id:
+            frappe.set_user("Guest")
 
         # Get the party (customer)
         party = get_party()

@@ -871,7 +871,7 @@ def get_order_details_by_id_v2(order_id):
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
-def get_order_details_by_quotation_name(quotation_name):
+def get_order_details_by_quotation_name(quotation_name, session_id=None):
     """
     Custom API to get details of a specific order by quotation_name.
     Restricts access to only the logged-in customer's orders.
@@ -885,27 +885,30 @@ def get_order_details_by_quotation_name(quotation_name):
             frappe.get_request_header("Authorization", str).split(" ")[1:]
         )
 
+        if session_id:
+            frappe.set_user("Guest")
+
         # Get the current user
         user = frappe.local.session.user
 
-        if user is None or user == "Guest":
+        if user is None :
             frappe.throw(
                 "You need to be logged in to view order details.",
                 frappe.PermissionError,
             )
 
         # Fetch the customer linked with the logged-in user's email
-        customer = frappe.db.get_value(
-            "Customer",
-            {"email_id": user},
-            ["name"],
-            as_dict=True,
-        )
+        # customer = frappe.db.get_value(
+        #     "Customer",
+        #     {"email_id": user},
+        #     ["name"],
+        #     as_dict=True,
+        # )
 
-        if not customer:
-            frappe.throw(
-                "Customer profile not found for this user.", frappe.DoesNotExistError
-            )
+        # if not customer:
+        #     frappe.throw(
+        #         "Customer profile not found for this user.", frappe.DoesNotExistError
+        #     )
 
         soi = frappe.get_all(
             "Sales Order Item",
@@ -923,11 +926,11 @@ def get_order_details_by_quotation_name(quotation_name):
             frappe.throw("Order not found.", frappe.DoesNotExistError)
 
         # Check if the order belongs to the current customer
-        if order.customer != customer["name"]:
-            frappe.throw(
-                "You do not have permission to access this order.",
-                frappe.PermissionError,
-            )
+        # if order.customer != customer["name"]:
+        #     frappe.throw(
+        #         "You do not have permission to access this order.",
+        #         frappe.PermissionError,
+        #     )
 
         #by default make the order_status=Packed
         order_status= 'Packed';
