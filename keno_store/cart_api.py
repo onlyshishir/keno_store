@@ -2436,7 +2436,7 @@ def get_pickup_store():
         # Fetch warehouses where warehouse_type is 'Pickup Point'
         pickup_points = frappe.get_all(
             "Warehouse",
-            filters={"warehouse_type": "Pickup Point"},
+            filters={"warehouse_type": "Pickup Point", "disabled": 0},
             fields=[
                 "name",
                 "warehouse_name",
