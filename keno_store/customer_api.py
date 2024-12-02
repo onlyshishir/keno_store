@@ -969,6 +969,10 @@ def get_order_details_by_quotation_name(quotation_name, session_id=None):
             if delivery_partner_user is not None:
                 delivery_partner =  frappe.db.get_value("User", {"email": delivery_partner_user}, ["full_name", "mobile_no"], as_dict=True)
 
+        pickup_store_name = None
+        if order.custom_pickup_store:
+            pickup_store_name = frappe.db.get_value("Warehouse", order.custom_pickup_store, "warehouse_name")
+
         # Prepare order data
         order_data = {
             "order_id": order.name,
@@ -977,6 +981,8 @@ def get_order_details_by_quotation_name(quotation_name, session_id=None):
             "status": order_status,
             "net_total": order.net_total,
             "grand_total": order.grand_total,
+            "deliveryMethod": order.custom_delivery_method,
+            "pickupStore": pickup_store_name,
             "deliveryPartner": delivery_partner,
             "items": [
                 {
