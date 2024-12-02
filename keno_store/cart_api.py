@@ -2318,7 +2318,10 @@ def update_cart_details(cart, session_id=None,):
         contact_mobile = cart.get("contact_mobile")
         if contact_mobile:
             quotation.contact_mobile = contact_mobile
-        # quotation.contact_email = cart["contact_email"]
+         
+        contact_email = cart.get("contact_email")
+        if contact_email:
+            quotation.contact_email = contact_email
 
         billing_address = cart.get("billing_address")
         if billing_address:
