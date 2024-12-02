@@ -2321,7 +2321,7 @@ def get_coverage_area_info():
                 {
                     "range": "$201 and up",
                     "delivery_charge": "Free",
-                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                    "areas": ["Queens", "Long Island (Nassau County)"]
                 },
                 {
                     "range": "$101-$200",
@@ -2343,7 +2343,7 @@ def get_coverage_area_info():
                 {
                     "range": "$101 and up",
                     "delivery_charge": "Free",
-                    "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
+                    "areas": ["Queens", "Long Island (Nassau County)"]
                 },
                 {
                     "range": "Below $100",
