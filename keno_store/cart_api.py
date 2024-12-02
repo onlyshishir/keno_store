@@ -1546,6 +1546,7 @@ def place_order(payment_method, session_id=None):
         if not (
             quotation.contact_display
             or quotation.contact_mobile
+            or quotation.contact_email
             or quotation.shipping_address_name
             or quotation.custom_delivery_method
             or quotation.customer_address
@@ -1848,7 +1849,8 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
         cart_settings = frappe.get_cached_doc("Webshop Settings")
         quotation.company = cart_settings.company
 
-        delivery_slot = frappe.get_doc("Delivery Slot", quotation.custom_delivery_slot)
+        if quotation.custom_delivery_slot:
+            delivery_slot = frappe.get_doc("Delivery Slot", quotation.custom_delivery_slot)
 
         quotation.flags.ignore_permissions = True
         quotation.submit()
@@ -1893,6 +1895,8 @@ def process_order_after_payment_success(quotation_name, payment_intent, payment_
             sales_order.delivery_date, sales_order.custom_delivery_slot = (
                 get_date_and_time_slot(delivery_slot)
             )
+        elif quotation.custom_store_pickup_datetime:
+            sales_order.delivery_date = quotation.custom_store_pickup_datetime.strftime('%y-%m-%d')
 
         sales_order.custom_payment_method = payment_method
 
