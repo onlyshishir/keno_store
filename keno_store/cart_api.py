@@ -1788,7 +1788,7 @@ def stripe_webhook():
     payload = frappe.request.data
     sig_header = frappe.request.headers.get("Stripe-Signature")
     # Your webhook secret
-    endpoint_secret = "whsec_HvbyOfL3GqoZj0KampikDsuwmSKV5PrK"
+    endpoint_secret = "whsec_07vgh1B8sxzfEcfyJckcNl0eF0qsoJU8"
     set_session_user("administrator")
 
     try:
