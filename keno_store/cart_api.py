@@ -1395,6 +1395,29 @@ def update_guest_cart(
                 empty_card = True
 
         else:
+            # Fetch minimum and maximum quantity limits
+            min_qty, max_qty = frappe.db.get_value(
+                "Item", item_code, ["custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+            )
+
+            # Default to 0 if the values are None
+            min_qty = min_qty or 0
+            max_qty = max_qty or 0
+
+            # Validate the requested quantity
+            if min_qty and qty < min_qty:
+                frappe.throw(
+                    _("The minimum quantity for {0} is {1}. Please increase the quantity.").format(
+                        item_code, min_qty
+                    )
+                )
+
+            if max_qty and qty > max_qty:
+                frappe.throw(
+                    _("The maximum quantity for {0} is {1}. Please reduce the quantity.").format(
+                        item_code, max_qty
+                    )
+                )
             warehouse = frappe.get_cached_value(
                 "Website Item", {"item_code": item_code}, "website_warehouse"
             )
