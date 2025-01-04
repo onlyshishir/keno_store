@@ -429,6 +429,9 @@ def get_website_item_details(item_code):
         # Get stock quantity
         stock_qty = frappe.db.get_value("Bin", {"item_code": item_code}, "projected_qty ")
         item_details["stock_qty"] = stock_qty if stock_qty else 0
+        qty_limits = get_cart_qty_limits(item_code)
+        item_details["minimum_qty"] = qty_limits["minimum_qty"]
+        item_details["maximum_qty"] = qty_limits["maximum_qty"]
 
         try:
             # Fetch product information including pricing details
