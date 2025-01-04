@@ -602,8 +602,8 @@ def update_cart(item_code, qty, additional_notes=None):
                 empty_cart = True
         else:
             # Fetch minimum and maximum quantity limits
-            item_name, min_qty, max_qty = frappe.db.get_value(
-                "Item", item_code, ["item_name", "custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+            item_name, stock_uom, min_qty, max_qty = frappe.db.get_value(
+                "Item", item_code, ["item_name", "stock_uom", "custom_minimum_cart_qty", "custom_maximum_cart_qty"]
             )
 
             # Default to 0 if the values are None
@@ -613,15 +613,15 @@ def update_cart(item_code, qty, additional_notes=None):
             # Validate the requested quantity
             if min_qty and qty < min_qty:
                 frappe.throw(
-                    _("Minimum order quantity for {0} is {1}.").format(
-                        item_name, min_qty
+                    _("Minimum order quantity for {0} is {1} {2}.").format(
+                        item_name, min_qty, stock_uom
                     )
                 )
 
             if max_qty and qty > max_qty:
                 frappe.throw(
-                    _("Maximum order quantity for {0} is {1}.").format(
-                        item_name, max_qty
+                    _("Maximum order quantity for {0} is {1} {2}.").format(
+                        item_name, max_qty, stock_uom
                     )
                 )
             # Fetch warehouse and stock information
@@ -1397,8 +1397,8 @@ def update_guest_cart(
 
             else:
                 # Fetch minimum and maximum quantity limits
-                item_name, min_qty, max_qty = frappe.db.get_value(
-                    "Item", item_code, ["item_name", "custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+                item_name, stock_uom, min_qty, max_qty = frappe.db.get_value(
+                    "Item", item_code, ["item_name", "stock_uom", "custom_minimum_cart_qty", "custom_maximum_cart_qty"]
                 )
 
                 # Default to 0 if the values are None
@@ -1408,8 +1408,8 @@ def update_guest_cart(
                 # Validate the requested quantity
                 if min_qty and qty < min_qty:
                     frappe.throw(
-                        _("Minimum order quantity for {0} is {1}.").format(
-                            item_name, min_qty
+                        _("Minimum order quantity for {0} is {1} {2}.").format(
+                            item_name, min_qty, stock_uom
                         )
                     )
 
