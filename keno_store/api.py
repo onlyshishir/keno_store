@@ -366,6 +366,9 @@ def get_product_filter_data(query_args=None):
     for item in result["items"]:
         item_code = item.get("item_code")
         if item_code:
+            qty_limits = get_cart_qty_limits(item_code)
+            item["minimum_qty"] = qty_limits["minimum_qty"]
+            item["maximum_qty"] = qty_limits["maximum_qty"]
             ratings = frappe.db.get_all("Item Review", filters={"item": item_code}, fields=["rating"])
             if ratings:
                 total_rating = sum([r["rating"] for r in ratings])
@@ -381,6 +384,21 @@ def get_product_filter_data(query_args=None):
         "settings": engine.settings,
         "sub_categories": sub_categories,
         "items_count": result["items_count"],
+    }
+
+
+def get_cart_qty_limits(item_code):
+    # Fetch both custom_minimum_cart_qty and custom_maximum_cart_qty
+    min_qty, max_qty = frappe.db.get_value(
+        'Item', 
+        item_code, 
+        ['custom_minimum_cart_qty', 'custom_maximum_cart_qty']
+    ) or (None, None)  # Default to None if no record found
+
+    # Return 0 if values are None
+    return {
+        "minimum_qty": min_qty or 0,
+        "maximum_qty": max_qty or 0
     }
 
 
@@ -630,6 +648,9 @@ def search(query=None, page=1, page_size=10):
                 # Get item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
                 if ratings:
+                    qty_limits = get_cart_qty_limits(item.item_code)
+                    item["minimum_qty"] = qty_limits["minimum_qty"]
+                    item["maximum_qty"] = qty_limits["maximum_qty"]
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
                     item["rating"] = round(average_rating, 1)
@@ -751,6 +772,9 @@ def get_new_website_items(limit=10, price_list="Standard Selling"):
             try:
                 # Fetch item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
@@ -869,6 +893,9 @@ def get_hot_deals_website_items(limit=10, price_list="Standard Selling"):
             try:
                 # Fetch item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
@@ -983,6 +1010,9 @@ def get_top_selling_products(period="last_month", page=1, page_size=10):
                 # Get item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
                 if ratings:
+                    qty_limits = get_cart_qty_limits(item.item_code)
+                    item["minimum_qty"] = qty_limits["minimum_qty"]
+                    item["maximum_qty"] = qty_limits["maximum_qty"]
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
                     item["rating"] = round(average_rating, 1)
@@ -1193,6 +1223,9 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
             try:
                 # Get item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
@@ -1368,6 +1401,9 @@ def get_special_discount_items(limit=10):
             try:
                 # Fetch item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
@@ -1525,6 +1561,9 @@ def get_offer_items(offer_title, page=1, page_size=10):
             try:
                 # Get item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
@@ -1684,6 +1723,9 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
             try:
                 # Get item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
@@ -1837,6 +1879,9 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
             try:
                 # Fetch item rating
                 ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                qty_limits = get_cart_qty_limits(item.item_code)
+                item["minimum_qty"] = qty_limits["minimum_qty"]
+                item["maximum_qty"] = qty_limits["maximum_qty"]
                 if ratings:
                     total_rating = sum([r["rating"] for r in ratings])
                     average_rating = total_rating / len(ratings)
