@@ -1376,133 +1376,151 @@ def apply_coupon_code(
 def update_guest_cart(
     session_id, item_code, qty, with_items=None, additional_notes=None
 ):
-    default_customer = "Guest"
-    empty_card = False
+    try:
+        default_customer = "Guest"
+        empty_card = False
 
-    quotation = frappe.get_all(
-        "Quotation", filters={"custom_session_id": session_id, "docstatus": 0}, limit=1
-    )
+        quotation = frappe.get_all(
+            "Quotation", filters={"custom_session_id": session_id, "docstatus": 0}, limit=1
+        )
 
-    if quotation:
-        # Fetch the existing quotation for the session
-        quotation = frappe.get_doc("Quotation", quotation[0].name)
-        qty = flt(qty)
-        if qty == 0:
-            quotation_items = quotation.get("items", {"item_code": ["!=", item_code]})
-            if quotation_items:
-                quotation.set("items", quotation_items)
+        if quotation:
+            # Fetch the existing quotation for the session
+            quotation = frappe.get_doc("Quotation", quotation[0].name)
+            qty = flt(qty)
+            if qty == 0:
+                quotation_items = quotation.get("items", {"item_code": ["!=", item_code]})
+                if quotation_items:
+                    quotation.set("items", quotation_items)
+                else:
+                    empty_card = True
+
             else:
-                empty_card = True
+                # Fetch minimum and maximum quantity limits
+                min_qty, max_qty = frappe.db.get_value(
+                    "Item", item_code, ["custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+                )
 
+                # Default to 0 if the values are None
+                min_qty = min_qty or 0
+                max_qty = max_qty or 0
+
+                # Validate the requested quantity
+                if min_qty and qty < min_qty:
+                    frappe.throw(
+                        _("The minimum quantity for {0} is {1}. Please increase the quantity.").format(
+                            item_code, min_qty
+                        )
+                    )
+
+                if max_qty and qty > max_qty:
+                    frappe.throw(
+                        _("The maximum quantity for {0} is {1}. Please reduce the quantity.").format(
+                            item_code, max_qty
+                        )
+                    )
+                warehouse = frappe.get_cached_value(
+                    "Website Item", {"item_code": item_code}, "website_warehouse"
+                )
+
+                # Verify projected qty (available_qty - reserved_qty)
+                projected_qty = frappe.get_cached_value(
+                    "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
+                )
+
+                # Check if sufficient stock is available
+                if projected_qty < qty:
+                    frappe.throw(
+                        _("Only {0} units of {1} are available in stock.").format(
+                            projected_qty, item_code
+                        )
+                    )
+
+                quotation_items = quotation.get("items", {"item_code": item_code})
+                if not quotation_items:
+                    quotation.append(
+                        "items",
+                        {
+                            "doctype": "Quotation Item",
+                            "item_code": item_code,
+                            "qty": qty,
+                            "additional_notes": additional_notes,
+                            "warehouse": warehouse,
+                        },
+                    )
+                else:
+                    quotation_items[0].qty = qty
+                    quotation_items[0].warehouse = warehouse
+                    quotation_items[0].additional_notes = additional_notes
         else:
-            # Fetch minimum and maximum quantity limits
-            min_qty, max_qty = frappe.db.get_value(
-                "Item", item_code, ["custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+            # Create a new quotation for the session
+            company = frappe.db.get_single_value("Webshop Settings", "company")
+            quotation = frappe.get_doc(
+                {
+                    "doctype": "Quotation",
+                    "quotation_to": "Customer",  # You can change this to "Lead" if needed
+                    "party_name": default_customer,  # Associate with the default customer
+                    "transaction_date": frappe.utils.nowdate(),
+                    "custom_session_id": session_id,  # Custom field to track guest session
+                    "items": [],
+                    "company": company,
+                    "order_type": "Shopping Cart",
+                    "status": "Draft",
+                    "docstatus": 0,
+                }
             )
 
-            # Default to 0 if the values are None
-            min_qty = min_qty or 0
-            max_qty = max_qty or 0
-
-            # Validate the requested quantity
-            if min_qty and qty < min_qty:
-                frappe.throw(
-                    _("The minimum quantity for {0} is {1}. Please increase the quantity.").format(
-                        item_code, min_qty
-                    )
-                )
-
-            if max_qty and qty > max_qty:
-                frappe.throw(
-                    _("The maximum quantity for {0} is {1}. Please reduce the quantity.").format(
-                        item_code, max_qty
-                    )
-                )
+            # Add item to quotation
             warehouse = frappe.get_cached_value(
                 "Website Item", {"item_code": item_code}, "website_warehouse"
             )
 
-            # Verify projected qty (available_qty - reserved_qty)
-            projected_qty = frappe.get_cached_value(
-                "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
+            # Append the item if not already added
+            quotation.append(
+                "items",
+                {
+                    "doctype": "Quotation Item",
+                    "item_code": item_code,
+                    "qty": flt(qty),
+                    "warehouse": warehouse,
+                },
             )
 
-            # Check if sufficient stock is available
-            if projected_qty < qty:
-                frappe.throw(
-                    _("Only {0} units of {1} are available in stock.").format(
-                        projected_qty, item_code
-                    )
-                )
+        apply_cart_settings(quotation=quotation)
 
-            quotation_items = quotation.get("items", {"item_code": item_code})
-            if not quotation_items:
-                quotation.append(
-                    "items",
-                    {
-                        "doctype": "Quotation Item",
-                        "item_code": item_code,
-                        "qty": qty,
-                        "additional_notes": additional_notes,
-                        "warehouse": warehouse,
-                    },
-                )
-            else:
-                quotation_items[0].qty = qty
-                quotation_items[0].warehouse = warehouse
-                quotation_items[0].additional_notes = additional_notes
-    else:
-        # Create a new quotation for the session
-        company = frappe.db.get_single_value("Webshop Settings", "company")
-        quotation = frappe.get_doc(
-            {
-                "doctype": "Quotation",
-                "quotation_to": "Customer",  # You can change this to "Lead" if needed
-                "party_name": default_customer,  # Associate with the default customer
-                "transaction_date": frappe.utils.nowdate(),
-                "custom_session_id": session_id,  # Custom field to track guest session
-                "items": [],
-                "company": company,
-                "order_type": "Shopping Cart",
-                "status": "Draft",
-                "docstatus": 0,
-            }
-        )
+        quotation.flags.ignore_permissions = True
 
-        # Add item to quotation
-        warehouse = frappe.get_cached_value(
-            "Website Item", {"item_code": item_code}, "website_warehouse"
-        )
+        quotation_name = quotation.name
 
-        # Append the item if not already added
-        quotation.append(
-            "items",
-            {
-                "doctype": "Quotation Item",
-                "item_code": item_code,
-                "qty": flt(qty),
-                "warehouse": warehouse,
-            },
-        )
+        if not empty_card:
+            quotation.save()
+        else:
+            quotation.delete()
+            quotation = None
 
-    apply_cart_settings(quotation=quotation)
+        set_cart_count(quotation)
 
-    quotation.flags.ignore_permissions = True
+        if quotation:
+            return quotation.name
+        else:
+            return quotation_name
+    except frappe.DoesNotExistError as e:
+        # Handle missing records
+        frappe.log_error(f"Record not found: {e}", "Cart Update Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.NOT_FOUND
+        frappe.response["data"] = {"error": str(e)}
 
-    quotation_name = quotation.name
+    except frappe.ValidationError as e:
+        # Handle validation issues
+        frappe.log_error(f"Validation error: {e}", "Cart Update Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.BAD_REQUEST
+        frappe.response["data"] = {"error": str(e)}
 
-    if not empty_card:
-        quotation.save()
-    else:
-        quotation.delete()
-        quotation = None
-
-    set_cart_count(quotation)
-
-    if quotation:
-        return quotation.name
-    else:
-        return quotation_name
+    except Exception as e:
+        # Handle unexpected errors
+        frappe.log_error(f"Unexpected error: {e}", "Cart Update Error")
+        frappe.local.response["http_status_code"] = HTTPStatus.INTERNAL_SERVER_ERROR
+        frappe.response["data"] = {"error": "An unexpected error occurred"}
 
 
 def get_stripe_keys():
