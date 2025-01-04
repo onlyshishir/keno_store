@@ -613,14 +613,14 @@ def update_cart(item_code, qty, additional_notes=None):
             # Validate the requested quantity
             if min_qty and qty < min_qty:
                 frappe.throw(
-                    _("The minimum quantity for {0} is {1}. Please increase the quantity.").format(
+                    _("The minimum quantity for {0} is {1}.").format(
                         item_name, min_qty
                     )
                 )
 
             if max_qty and qty > max_qty:
                 frappe.throw(
-                    _("The maximum quantity for {0} is {1}. Please reduce the quantity.").format(
+                    _("The maximum quantity for {0} is {1}.").format(
                         item_name, max_qty
                     )
                 )
@@ -1408,14 +1408,14 @@ def update_guest_cart(
                 # Validate the requested quantity
                 if min_qty and qty < min_qty:
                     frappe.throw(
-                        _("The minimum quantity for {0} is {1}. Please increase the quantity.").format(
+                        _("The minimum quantity for {0} is {1}.").format(
                             item_name, min_qty
                         )
                     )
 
                 if max_qty and qty > max_qty:
                     frappe.throw(
-                        _("The maximum quantity for {0} is {1}. Please reduce the quantity.").format(
+                        _("The maximum quantity for {0} is {1}.").format(
                             item_name, max_qty
                         )
                     )
