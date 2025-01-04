@@ -638,7 +638,7 @@ def update_cart(item_code, qty, additional_notes=None):
             if projected_qty < qty:
                 frappe.throw(
                     _("Only {0} units of {1} are available in stock.").format(
-                        projected_qty, item_code
+                        projected_qty, item_name
                     )
                 )
 
@@ -1432,7 +1432,7 @@ def update_guest_cart(
                 if projected_qty < qty:
                     frappe.throw(
                         _("Only {0} units of {1} are available in stock.").format(
-                            projected_qty, item_code
+                            projected_qty, item_name
                         )
                     )
 
