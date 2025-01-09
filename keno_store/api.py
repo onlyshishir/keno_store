@@ -9,7 +9,7 @@ from frappe import _
 from frappe.auth import CookieManager, validate_auth_via_api_keys
 from frappe.contacts.doctype.contact.contact import get_contact_name
 from frappe.email.doctype.email_template.email_template import get_email_template
-from frappe.utils import cint, get_datetime
+from frappe.utils import cint, get_datetime, getdate, nowdate
 from frappe.utils import flt
 import frappe.utils
 from webshop.webshop.doctype.item_review.item_review import add_item_review
@@ -1069,14 +1069,6 @@ def get_top_selling_products(period="last_month", page=1, page_size=10):
 
 @frappe.whitelist(allow_guest=True)
 def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling"):
-    """
-    Fetch hot deals (items with active pricing rules) that will expire within the next X days.
-    Args:
-        limit (int): The number of items to return (default is 10).
-        price_list (str): The price list to fetch item prices from (default is "Standard Selling").
-    Returns:
-        dict: A dictionary containing the list of hot deal website items or an error message.
-    """
     try:
         # Validate Authorization header
         auth_header = frappe.get_request_header("Authorization", str)
@@ -1454,6 +1446,13 @@ def get_offer_items(offer_title, page=1, page_size=10):
         limit = page_size
 
         promotional_scheme_doc = frappe.get_doc("Promotional Scheme", offer_title)
+        # Validate the scheme's validity
+        current_date = getdate(nowdate())
+        valid_from = getdate(promotional_scheme_doc.valid_from)
+        valid_upto = getdate(promotional_scheme_doc.valid_upto)
+
+        if not (valid_from <= current_date <= valid_upto):
+            frappe.throw(_("The promotional scheme '{0}' is not active.").format(offer_title), frappe.ValidationError)
 
         offer_rules = frappe.get_all(
             "Pricing Rule",
