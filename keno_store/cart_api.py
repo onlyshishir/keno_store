@@ -1453,6 +1453,29 @@ def update_guest_cart(
                     quotation_items[0].warehouse = warehouse
                     quotation_items[0].additional_notes = additional_notes
         else:
+            # Fetch minimum and maximum quantity limits
+            item_name, stock_uom, min_qty, max_qty = frappe.db.get_value(
+                "Item", item_code, ["item_name", "stock_uom", "custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+            )
+
+            # Default to 0 if the values are None
+            min_qty = min_qty or 0
+            max_qty = max_qty or 0
+
+            # Validate the requested quantity
+            if min_qty and qty < min_qty:
+                frappe.throw(
+                    _("Minimum order quantity for {0} is {1} {2}.").format(
+                        item_name, min_qty, stock_uom
+                    )
+                )
+
+            if max_qty and qty > max_qty:
+                frappe.throw(
+                    _("Maximum order quantity for {0} is {1}.").format(
+                        item_name, max_qty
+                    )
+                )
             # Create a new quotation for the session
             company = frappe.db.get_single_value("Webshop Settings", "company")
             quotation = frappe.get_doc(
