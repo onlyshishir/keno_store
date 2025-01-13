@@ -1523,10 +1523,13 @@ def update_guest_cart(
 
         set_cart_count(quotation)
 
-        if quotation:
-            return quotation.name
-        else:
-            return quotation_name
+        # if quotation:
+        #     return quotation.name
+        # else:
+        #     return quotation_name
+        # Set response on success
+        frappe.local.response["http_status_code"] = HTTPStatus.OK
+        frappe.response["data"] = {"message": "Successfully updated the user's cart"}
     except frappe.DoesNotExistError as e:
         # Handle missing records
         frappe.log_error(f"Record not found: {e}", "Cart Update Error")
