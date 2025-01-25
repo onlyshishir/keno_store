@@ -918,7 +918,7 @@ def get_hot_deals_website_items(limit=10, price_list="Standard Selling"):
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
-def get_top_selling_products(period="last_month", page=1, page_size=10):
+def get_top_selling_products(period=None, page=1, page_size=10):
     try:
         # Validate Authorization header
         auth_header = frappe.get_request_header("Authorization", str)
