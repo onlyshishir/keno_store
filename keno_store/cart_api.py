@@ -2850,7 +2850,8 @@ def get_geolocation_from_address(address):
             longitude = location["lng"]
             return latitude, longitude
         else:
-            return f"Error: Unable to get the geolocation. {data['status']}"
+            # return f"Error: Unable to get the geolocation. {data['status']}"
+            return 40.72, -73.77
 
     except Exception as e:
         return f"An error occurred: {str(e)}"
