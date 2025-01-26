@@ -7,13 +7,14 @@ import frappe
 from frappe.auth import validate_auth_via_api_keys
 from frappe.model.docstatus import DocStatus
 from frappe.utils.data import add_days, getdate, now, today
+from keno_store.utils import validate_coupon_against_cart
 import requests
 import stripe
 import frappe.defaults
 from frappe import _, throw
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.contacts.doctype.contact.contact import get_contact_name
-from frappe.utils import cint, cstr, flt, get_fullname
+from frappe.utils import cint, cstr, flt, get_fullname, money_in_words
 import frappe.utils
 from frappe.utils.nestedset import get_root_of
 from datetime import datetime, timedelta
@@ -121,6 +122,8 @@ def get_cart_quotation(doc=None, session_id=None):
             "contact_mobile": quotation.contact_mobile,
             "contact_email": quotation.contact_email,
             "net_total": quotation.net_total,
+            "total": quotation.total,
+            "discount_amount": quotation.discount_amount,
             "taxes_and_charges": quotation.base_total_taxes_and_charges,
             "grand_total": quotation.grand_total,
             "rounding_adjustment": quotation.grand_total,
@@ -1312,7 +1315,7 @@ def apply_coupon_code(
             "Coupon Code", filters={"coupon_code": applied_code}
         )
         if not coupon_list:
-            frappe.throw(_("Please enter a valid coupon code"))
+            frappe.throw(_("Please enter a valid coupon code"), frappe.ValidationError)
 
         coupon_name = coupon_list[0].name
 
@@ -1320,6 +1323,9 @@ def apply_coupon_code(
         from erpnext.accounts.doctype.pricing_rule.utils import validate_coupon_code
 
         validate_coupon_code(coupon_name)
+
+        if session_id:
+            frappe.set_user("Guest")
 
         if frappe.local.session.user is None or frappe.session.user == "Guest":
             quotation = frappe.get_all(
@@ -1335,6 +1341,8 @@ def apply_coupon_code(
 
         if not quotation.items:
             frappe.throw(_("Empty cart", frappe.ValidationError))
+
+        validate_coupon_against_cart(quotation, coupon_name)
         quotation.coupon_code = coupon_name
         quotation.flags.ignore_permissions = True
         quotation.save()
@@ -1355,16 +1363,87 @@ def apply_coupon_code(
 
     except frappe.ValidationError as e:
         # Handle specific validation errors
+        frappe.local.response["http_status_code"] = 400
         frappe.response["data"] = {
             "message": "There was a validation error",
             "error": str(e),
         }
 
     except frappe.DoesNotExistError:
+        frappe.local.response["http_status_code"] = 400
         frappe.response["data"] = {"message": "Requested document does not exist"}
 
     except Exception as e:
         # General exception handling
+        frappe.local.response["http_status_code"] = 500
+        frappe.log_error(frappe.get_traceback(), _("Error in apply_coupon_code"))
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
+
+
+@frappe.whitelist(allow_guest=True)
+def remove_coupon_from_cart(
+    session_id=None
+):
+    try:
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
+
+        # Check if the user is logged in
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            if session_id is None:
+                frappe.throw("Should include session id for Guest user.")
+
+        if session_id:
+            frappe.set_user("Guest")
+
+        if frappe.local.session.user is None or frappe.session.user == "Guest":
+            quotation = frappe.get_all(
+                "Quotation",
+                filters={"custom_session_id": session_id, "docstatus": 0},
+                limit=1,
+            )
+            if quotation:
+                # Fetch the existing quotation for the session
+                quotation = frappe.get_doc("Quotation", quotation[0].name)
+        else:
+            quotation = _get_cart_quotation()
+
+        if not quotation.coupon_code:
+            frappe.throw(_("Coupon not present", frappe.ValidationError))
+
+        quotation.additional_discount_percentage = None
+        quotation.coupon_code = None
+        quotation.base_discount_amount = 0
+        quotation.base_net_total = quotation.base_net_total + quotation.discount_amount
+        quotation.base_grand_total = quotation.base_grand_total + quotation.discount_amount
+        quotation.net_total = quotation.net_total + quotation.discount_amount
+        quotation.grand_total = quotation.grand_total + quotation.discount_amount
+        quotation.in_words = money_in_words(quotation.grand_total, "USD")
+        quotation.discount_amount = None
+        quotation.flags.ignore_permissions = True
+        quotation.save()
+
+        return quotation
+
+    except frappe.ValidationError as e:
+        # Handle specific validation errors
+        frappe.local.response["http_status_code"] = 400
+        frappe.response["data"] = {
+            "message": "There was a validation error",
+            "error": str(e),
+        }
+
+    except frappe.DoesNotExistError:
+        frappe.local.response["http_status_code"] = 400
+        frappe.response["data"] = {"message": "Requested document does not exist"}
+
+    except Exception as e:
+        # General exception handling
+        frappe.local.response["http_status_code"] = 500
         frappe.log_error(frappe.get_traceback(), _("Error in apply_coupon_code"))
         frappe.response["data"] = {
             "message": "An unexpected error occurred. Please try again later.",
