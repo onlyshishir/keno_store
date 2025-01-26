@@ -57,7 +57,7 @@ def validate_coupon_on_cart_update(doc, method):
         return
 
     # Validate minimum amount
-    if pricing_rule.min_amt and doc.net_total <= pricing_rule.min_amt:
+    if pricing_rule.min_amt and doc.total <= pricing_rule.min_amt:
         frappe.msgprint(
             f"Coupon code '{doc.coupon_code}' requires a minimum amount of {frappe.format_value(pricing_rule.min_amt, 'Currency')}. It has been removed.",
             indicator="orange"
