@@ -236,6 +236,9 @@ doc_events = {
         "on_submit": "keno_store.keno_store.pick_list.on_pick_list_submit",
         "after_insert": "keno_store.keno_store.pick_list.fetch_item_barcodes"
     },
+    "Quotation": {
+        "validate": "keno_store.keno_store.coupon_validation.validate_coupon_on_cart_update",
+    }
 }
 
 
