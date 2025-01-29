@@ -2632,7 +2632,7 @@ def download_app():
     elif 'iPhone' in user_agent or 'iPad' in user_agent:
         # Redirect to Apple App Store
         frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = "https://apps.apple.com/us/app/amazon-shopping/id297606951"
+        frappe.local.response["location"] = "https://apps.apple.com/us/app/keno-today/id6736888399"
     else:
         # Fallback URL (e.g., your website or app info page)
         frappe.local.response["type"] = "redirect"
