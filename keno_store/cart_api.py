@@ -150,6 +150,9 @@ def get_cart_quotation(doc=None, session_id=None):
                     "discount_amount": item.discount_amount,
                     "amount": item.amount,
                     "image": item.image,
+                    "item_category": item.item_group,
+                    "item_brand": item.brand
+
                 }
                 for item in quotation.items
             ],
