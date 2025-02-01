@@ -1656,20 +1656,10 @@ def place_order(payment_method, session_id=None):
     stripe_keys = get_stripe_keys()
 
     try:
-        # Check if Authorization header is present
-        auth_header = frappe.get_request_header("Authorization", str)
-        if not auth_header:
-            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-
-        # Validate authorization via API keys
-        api_keys = auth_header.split(" ")[1:]
-        if not api_keys:
-            frappe.throw(
-                "Authorization header is malformed or missing API keys.",
-                frappe.AuthenticationError,
-            )
-
-        validate_auth_via_api_keys(api_keys)
+         # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
 
         # Check if the user is logged in
         if frappe.local.session.user is None or frappe.session.user == "Guest":
