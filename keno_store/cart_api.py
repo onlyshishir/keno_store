@@ -1656,20 +1656,10 @@ def place_order(payment_method, session_id=None):
     stripe_keys = get_stripe_keys()
 
     try:
-        # Check if Authorization header is present
-        auth_header = frappe.get_request_header("Authorization", str)
-        if not auth_header:
-            frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-
-        # Validate authorization via API keys
-        api_keys = auth_header.split(" ")[1:]
-        if not api_keys:
-            frappe.throw(
-                "Authorization header is malformed or missing API keys.",
-                frappe.AuthenticationError,
-            )
-
-        validate_auth_via_api_keys(api_keys)
+         # Validate API key authorization
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
 
         # Check if the user is logged in
         if frappe.local.session.user is None or frappe.session.user == "Guest":
@@ -1960,7 +1950,7 @@ def stripe_webhook():
     payload = frappe.request.data
     sig_header = frappe.request.headers.get("Stripe-Signature")
     # Your webhook secret
-    endpoint_secret = "whsec_bf4cd90ee112427471f8ba100ddb38837c447f9529c4e9071f931fe889986286"
+    endpoint_secret = "whsec_07vgh1B8sxzfEcfyJckcNl0eF0qsoJU8"
     set_session_user("administrator")
 
     try:
@@ -2267,8 +2257,8 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
                 "party_type": "Customer",
                 "party": sales_invoice.customer,
                 "paid_to": (
-                    # "1201 - Stripe FT - KN"  # Account used for Stripe payments
-                    "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
+                    "1201 - Stripe FT - KN"  # Account used for Stripe payments
+                    # "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
                 ),  # Bank account where the payment is received
                 "mode_of_payment": "Stripe",
                 "paid_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
@@ -2358,8 +2348,8 @@ def create_payment_entry_with_so(sales_order, payment_intent):
                 "posting_date": frappe.utils.nowdate(),
                 "party_type": "Customer",
                 "party": customer,
-                # "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
-                "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
+                "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
+                # "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
                 "mode_of_payment": "Stripe",
                 "paid_amount": paid_amount,
                 "received_amount": received_amount,
