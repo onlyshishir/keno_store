@@ -2367,17 +2367,12 @@ def get_coverage_area_info():
         home_delivery = {
             "same_day_delivery": [
                 {
-                    "range": "$201 and up",
-                    "delivery_charge": "Free",
-                    "areas": ["Queens", "Long Island (Nassau County)"]
-                },
-                {
-                    "range": "$101-$200",
+                    "range": "$151 and up",
                     "delivery_charge": "$5",
                     "areas": ["Queens", "Long Island (Nassau County)"]
                 },
                 {
-                    "range": "Below $100",
+                    "range": "Below $150",
                     "delivery_charge": "$10",
                     "areas": ["Queens", "Long Island (Nassau County)"]
                 }
@@ -2389,12 +2384,12 @@ def get_coverage_area_info():
                 #     "areas": ["Brooklyn", "Queens", "Long Island (Nassau County)"]
                 # },
                 {
-                    "range": "$101 and up",
+                    "range": "$151 and up",
                     "delivery_charge": "Free",
                     "areas": ["Queens", "Long Island (Nassau County)"]
                 },
                 {
-                    "range": "Below $100",
+                    "range": "Below $150",
                     "delivery_charge": "$5",
                     "areas": ["Queens", "Long Island (Nassau County)"]
                 }
