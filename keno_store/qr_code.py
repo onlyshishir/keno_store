@@ -10,7 +10,8 @@ def generate_qr(docname):
 
     first_sales_order = next((item.against_sales_order for item in doc.items if item.against_sales_order), None)
 
-    qr_data = f"Sales Order: {first_sales_order}\nDelivery Note: {doc.name}\nCustomer: {doc.customer_name}\nContact: {doc.contact_display}\nContact Mobile: {doc.contact_mobile}\nTotal: {doc.grand_total}"
+    qr_data = f"Sales Order: {first_sales_order}\nDelivery Note: {doc.name}\nCustomer: {doc.customer_name}\nContact: {doc.contact_display}\nTotal: {doc.grand_total}"
+    # qr_data = f"Delivery Note: {doc.name}\nCustomer: {doc.customer_name}\nContact: {doc.contact_display}\nTotal: {doc.grand_total}"
 
     # Generate QR Code
     qr = pyqrcode.create(qr_data)
