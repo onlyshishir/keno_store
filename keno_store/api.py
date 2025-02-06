@@ -2624,7 +2624,7 @@ def download_app():
     if 'Android' in user_agent:
         # Redirect to Google Play Store
         frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = "https://play.google.com/store/apps/details?id=com.amazon.mShop.android.shopping"
+        frappe.local.response["location"] = "https://play.google.com/store/apps/details?id=com.keno"
     elif 'iPhone' in user_agent or 'iPad' in user_agent:
         # Redirect to Apple App Store
         frappe.local.response["type"] = "redirect"
