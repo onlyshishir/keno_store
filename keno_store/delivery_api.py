@@ -226,7 +226,7 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
             # Fetch Delivery Notes filtered by custom_delivery_status
             delivery_notes = frappe.get_all(
                 "Delivery Note",
-                filters={"custom_delivery_status": 'Ready for Pickup', "docstatus":0},
+                filters={"custom_delivery_status": 'Ready for Pickup', "custom_delivery_method": "Home Delivery", "docstatus":0},
                 fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
                 limit_start=offset,
                 limit_page_length=limit
@@ -242,7 +242,7 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
                     delivery_notes = frappe.get_all(
                         "Delivery Note",
                         # filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0},
-                        filters={"custom_delivery_status": status, "transporter": deliveryPartner, "docstatus":1},
+                        filters={"custom_delivery_status": status, "transporter": deliveryPartner, "custom_delivery_method": "Home Delivery", "docstatus":1},
                         fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
                         limit_start=offset,
                         limit_page_length=limit
@@ -251,7 +251,7 @@ def getOrders(status=None, deliveryPartner=None, page=1, page_size=10):
                     delivery_notes = frappe.get_all(
                         "Delivery Note",
                         # filters={"custom_delivery_status": status, "transporter": supplier.name, "docstatus":0},
-                        filters={"custom_delivery_status": status, "transporter": deliveryPartner, "docstatus":0},
+                        filters={"custom_delivery_status": status, "transporter": deliveryPartner, "custom_delivery_method":"Home Delivery", "docstatus":0},
                         fields=["name", "posting_date", "customer", "custom_delivery_status as status", "grand_total", "shipping_address_name"],
                         limit_start=offset,
                         limit_page_length=limit
