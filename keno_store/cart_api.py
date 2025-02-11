@@ -1632,7 +1632,7 @@ def update_guest_cart(
 
 
 def get_stripe_keys():
-    stripe_settings = frappe.get_doc("Stripe Settings", "Stripe")
+    stripe_settings = frappe.get_doc("Stripe Settings", "Stripe Test")
 
     if not stripe_settings.secret_key:
         frappe.throw(
@@ -1854,7 +1854,9 @@ def place_order(payment_method, session_id=None):
         }
     except stripe.error.StripeError as e:
         frappe.log_error(f"Stripe Error: {str(e)}", "Stripe Error")
-        frappe.throw(_("Error creating payment intent: {0}").format(e.user_message))
+        # frappe.throw(_("Error creating payment intent: {0}").format(e.user_message))
+        frappe.local.response["http_status_code"] = HTTPStatus.NOT_ACCEPTABLE
+        frappe.response["data"] = {"message": _("Error creating payment intent: {0}").format(e.user_message), "error": str(e)}
     except frappe.AuthenticationError as e:
         frappe.local.response["http_status_code"] = HTTPStatus.FORBIDDEN
         frappe.response["data"] = {"message": "Authentication error", "error": str(e)}
@@ -1950,7 +1952,8 @@ def stripe_webhook():
     payload = frappe.request.data
     sig_header = frappe.request.headers.get("Stripe-Signature")
     # Your webhook secret
-    endpoint_secret = "whsec_07vgh1B8sxzfEcfyJckcNl0eF0qsoJU8"
+    # endpoint_secret = "whsec_07vgh1B8sxzfEcfyJckcNl0eF0qsoJU8"
+    endpoint_secret = 'whsec_bf4cd90ee112427471f8ba100ddb38837c447f9529c4e9071f931fe889986286'
     set_session_user("administrator")
 
     try:
@@ -2257,8 +2260,8 @@ def create_payment_entry(sales_invoice, payment_intent, delivery_note=None):
                 "party_type": "Customer",
                 "party": sales_invoice.customer,
                 "paid_to": (
-                    "1201 - Stripe FT - KN"  # Account used for Stripe payments
-                    # "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
+                    # "1201 - Stripe FT - KN"  # Account used for Stripe payments
+                    "1201 - Stripe FT - CMJ"  # Account used for Stripe payments
                 ),  # Bank account where the payment is received
                 "mode_of_payment": "Stripe",
                 "paid_amount": sales_invoice.rounded_total or sales_invoice.grand_total,
@@ -2348,8 +2351,8 @@ def create_payment_entry_with_so(sales_order, payment_intent):
                 "posting_date": frappe.utils.nowdate(),
                 "party_type": "Customer",
                 "party": customer,
-                "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
-                # "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
+                # "paid_to": "1201 - Stripe FT - KN",  # Stripe account for payments
+                "paid_to": "1201 - Stripe FT - CMJ",  # Stripe account for payments
                 "mode_of_payment": "Stripe",
                 "paid_amount": paid_amount,
                 "received_amount": received_amount,
