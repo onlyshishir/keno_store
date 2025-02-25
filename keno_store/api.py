@@ -15,13 +15,17 @@ import frappe.utils
 from webshop.webshop.doctype.item_review.item_review import add_item_review
 from webshop.webshop.product_data_engine.filters import ProductFiltersBuilder
 from webshop.webshop.product_data_engine.query import ProductQuery
-from webshop.webshop.doctype.override_doctype.item_group import get_child_groups_for_website
+from webshop.webshop.doctype.override_doctype.item_group import (
+    get_child_groups_for_website,
+)
 from webshop.webshop.utils.product import get_non_stock_item_status
 from webshop.webshop.shopping_cart.product_info import get_product_info_for_website
 from frappe.email.doctype.newsletter.newsletter import subscribe
 from babel.dates import format_date
+
 frappe.utils.logger.set_log_level("DEBUG")
 logger = frappe.logger("api", allow_site=True, file_count=50)
+
 
 @frappe.whitelist(allow_guest=True)
 def get_zone_by_zip(zip_code):
@@ -30,18 +34,27 @@ def get_zone_by_zip(zip_code):
             frappe.throw(_("Zip code is required"), frappe.exceptions.ValidationError)
 
         # Fetch the Zone Name where the zip code is found in the comma-separated list
-        zone = frappe.db.sql("""
+        zone = frappe.db.sql(
+            """
             SELECT 
                 `zone_name` 
             FROM 
                 `tabDelivery Zone` 
             WHERE 
                 FIND_IN_SET(%s, `zip_codes`) > 0
-            """, (zip_code), as_dict=True)
-        
+            """,
+            (zip_code),
+            as_dict=True,
+        )
+
         if not zone:
-            frappe.throw(_("No delivery zone found for the provided zip code: {0}").format(zip_code), frappe.exceptions.DoesNotExistError)
-        
+            frappe.throw(
+                _("No delivery zone found for the provided zip code: {0}").format(
+                    zip_code
+                ),
+                frappe.exceptions.DoesNotExistError,
+            )
+
         return {"zone": zone[0].zone_name}
 
     except frappe.exceptions.ValidationError as e:
@@ -56,8 +69,11 @@ def get_zone_by_zip(zip_code):
         frappe.log_error(message=str(e), title="Unexpected Error in get_zone_by_zip")
         return {"error": "An unexpected error occurred. Please try again later."}
 
+
 @frappe.whitelist(allow_guest=True)
-def signup_customer(full_name, email, mobile=None, password=None, confirm_password=None):
+def signup_customer(
+    full_name, email, mobile=None, password=None, confirm_password=None
+):
     try:
         # Check if passwords match
         if password != confirm_password:
@@ -65,7 +81,9 @@ def signup_customer(full_name, email, mobile=None, password=None, confirm_passwo
 
         # Check if user already exists
         if frappe.db.exists("User", email):
-            raise ValueError(_("User with this email {0}, already exists").format(email))
+            raise ValueError(
+                _("User with this email {0}, already exists").format(email)
+            )
 
         # Check if mobile number is unique
         if mobile:
@@ -76,35 +94,43 @@ def signup_customer(full_name, email, mobile=None, password=None, confirm_passwo
         frappe.db.begin()
 
         # Create the User
-        user = frappe.get_doc({
-            "doctype": "User",
-            "email": email,
-            "mobile_no": mobile,
-            "first_name": full_name.split()[0],  # Assumes first name is the first part of full name
-            "last_name": " ".join(full_name.split()[1:]),  # Assumes last name is the rest
-            "enabled": 1,
-            "user_type": "Website User",
-            # "roles": [
-            #     {"role": "Customer"}  # Add Customer role to the user
-            # ],
-            "role_profile_name": "Customer",
-            "new_password": password,  # Set the user's password
-            "send_welcome_email": 0  # Avoid sending the welcome email automatically
-        })
+        user = frappe.get_doc(
+            {
+                "doctype": "User",
+                "email": email,
+                "mobile_no": mobile,
+                "first_name": full_name.split()[
+                    0
+                ],  # Assumes first name is the first part of full name
+                "last_name": " ".join(
+                    full_name.split()[1:]
+                ),  # Assumes last name is the rest
+                "enabled": 1,
+                "user_type": "Website User",
+                # "roles": [
+                #     {"role": "Customer"}  # Add Customer role to the user
+                # ],
+                "role_profile_name": "Customer",
+                "new_password": password,  # Set the user's password
+                "send_welcome_email": 0,  # Avoid sending the welcome email automatically
+            }
+        )
 
         user.insert(ignore_permissions=True)
 
         # Create the Customer
-        customer = frappe.get_doc({
-            "doctype": "Customer",
-            "customer_name": full_name,
-            "customer_type": "Individual",
-            "customer_group": "All Customer Groups",
-            "territory": "All Territories",
-            "email_id": email,
-            "mobile_no": mobile,
-            "portal_users": [{"user": user.name}]  # Ensure we use `user.name` here
-        })
+        customer = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": full_name,
+                "customer_type": "Individual",
+                "customer_group": "All Customer Groups",
+                "territory": "All Territories",
+                "email_id": email,
+                "mobile_no": mobile,
+                "portal_users": [{"user": user.name}],  # Ensure we use `user.name` here
+            }
+        )
         customer.insert(ignore_permissions=True)
 
         # Commit the transaction
@@ -112,9 +138,14 @@ def signup_customer(full_name, email, mobile=None, password=None, confirm_passwo
 
         # Optionally send a welcome email
         # send_welcome_email(email, full_name)  # Commented out to skip welcome email
-        send_welcome_email_from_settings(email, full_name)  # Commented out to skip welcome email
+        send_welcome_email_from_settings(
+            email, full_name
+        )  # Commented out to skip welcome email
 
-        return {"status": "success", "message": _("User and Customer created successfully")}
+        return {
+            "status": "success",
+            "message": _("User and Customer created successfully"),
+        }
 
     except ValueError as ve:
         # frappe.log_error(message=str(ve), title="Signup Validation Error")
@@ -124,51 +155,57 @@ def signup_customer(full_name, email, mobile=None, password=None, confirm_passwo
     except Exception as e:
         frappe.log_error(message=str(e), title="Signup Customer Error")
         frappe.db.rollback()
-        return {"status": "error", "message": _("An error occurred while creating the user and customer")}
+        return {
+            "status": "error",
+            "message": _("An error occurred while creating the user and customer"),
+        }
 
 
 def send_welcome_email(email, full_name):
     try:
         # Define the template path
-        template_path = 'keno_store/templates/emails/welcome_email.html'
-        
+        template_path = "keno_store/templates/emails/welcome_email.html"
+
         # Attempt to get and render the template
         try:
             template = frappe.get_template(template_path)
         except IOError:
-            error_message = _("Email template not found at path: {0}").format(template_path)
+            error_message = _("Email template not found at path: {0}").format(
+                template_path
+            )
             frappe.log_error(message=error_message, title="Email Template Error")
             return {"status": "error", "message": error_message}
-        
+
         # Render the email content with context
-        message = template.render({
-            'customer_name': full_name
-        })
-        
+        message = template.render({"customer_name": full_name})
+
         # Define email subject
         subject = _("Welcome to Keno Store!")
-        
+
         # Send the email
         frappe.sendmail(
-            recipients=[email],
-            subject=subject,
-            message=message,
-            delayed=False,
-            retry=3
+            recipients=[email], subject=subject, message=message, delayed=False, retry=3
         )
-        
-        return {"status": "success", "message": _("Welcome email sent successfully to {0}").format(email)}
-    
+
+        return {
+            "status": "success",
+            "message": _("Welcome email sent successfully to {0}").format(email),
+        }
+
     except frappe.OutgoingEmailError as e:
-        error_message = _("Failed to send welcome email to {0}. SMTP server error: {1}").format(email, str(e))
+        error_message = _(
+            "Failed to send welcome email to {0}. SMTP server error: {1}"
+        ).format(email, str(e))
         frappe.log_error(message=error_message, title="SMTP Error")
         return {"status": "error", "message": error_message}
-    
+
     except Exception as e:
-        error_message = _("An unexpected error occurred while sending welcome email to {0}: {1}").format(email, str(e))
+        error_message = _(
+            "An unexpected error occurred while sending welcome email to {0}: {1}"
+        ).format(email, str(e))
         frappe.log_error(message=error_message, title="Send Welcome Email Error")
         return {"status": "error", "message": error_message}
-    
+
 
 def send_welcome_email_from_settings(email, full_name):
     try:
@@ -177,7 +214,7 @@ def send_welcome_email_from_settings(email, full_name):
         args = {
             "full_name": full_name,
             "title": subject,
-            "logo_url": 'https://keno.today/assets/logo.png',
+            "logo_url": "https://keno.today/assets/logo.png",
             "created_by": "Administrator",
         }
         if template_name:
@@ -195,16 +232,23 @@ def send_welcome_email_from_settings(email, full_name):
             delayed=False,
             retry=3,
         )
-        
-        return {"status": "success", "message": _("Welcome email sent successfully to {0}").format(email)}
-    
+
+        return {
+            "status": "success",
+            "message": _("Welcome email sent successfully to {0}").format(email),
+        }
+
     except frappe.OutgoingEmailError as e:
-        error_message = _("Failed to send welcome email to {0}. SMTP server error: {1}").format(email, str(e))
+        error_message = _(
+            "Failed to send welcome email to {0}. SMTP server error: {1}"
+        ).format(email, str(e))
         frappe.log_error(message=error_message, title="SMTP Error")
         return {"status": "error", "message": error_message}
-    
+
     except Exception as e:
-        error_message = _("An unexpected error occurred while sending welcome email to {0}: {1}").format(email, str(e))
+        error_message = _(
+            "An unexpected error occurred while sending welcome email to {0}: {1}"
+        ).format(email, str(e))
         frappe.log_error(message=error_message, title="Send Welcome Email Error")
         return {"status": "error", "message": error_message}
 
@@ -221,20 +265,23 @@ def get_weekly_schedule(zip_code=None):
                 "Delivery Zone",
                 filters={"zip_codes": ["like", f"%{zip_code}%"]},
                 fields=["zone_name"],
-                limit_page_length=1  # Ensure only one zone is fetched
+                limit_page_length=1,  # Ensure only one zone is fetched
             )
 
             if not zones:
-                frappe.throw(_("No zone found for the provided zip code: {0}").format(zip_code), frappe.exceptions.DoesNotExistError)
+                frappe.throw(
+                    _("No zone found for the provided zip code: {0}").format(zip_code),
+                    frappe.exceptions.DoesNotExistError,
+                )
         else:
             # If no zip code is provided, get all zones
-            zones = frappe.get_all(
-                "Delivery Zone",
-                fields=["zone_name"]
-            )
+            zones = frappe.get_all("Delivery Zone", fields=["zone_name"])
 
             if not zones:
-                frappe.throw(_("No zones found in the system"), frappe.exceptions.DoesNotExistError)
+                frappe.throw(
+                    _("No zones found in the system"),
+                    frappe.exceptions.DoesNotExistError,
+                )
 
         # Weekdays and corresponding field names for child tables
         weekdays = {
@@ -244,7 +291,7 @@ def get_weekly_schedule(zip_code=None):
             "Thursday": "thursday_slots",
             "Friday": "friday_slots",
             "Saturday": "saturday_slots",
-            "Sunday": "sunday_slots"
+            "Sunday": "sunday_slots",
         }
 
         # Iterate over each zone and fetch the weekly schedule
@@ -253,7 +300,9 @@ def get_weekly_schedule(zip_code=None):
 
             # Fetch the Delivery Zone Schedule for the current zone
             try:
-                schedule_doc = frappe.get_doc("Delivery Zone Schedule", {"delivery_zone": zone_name})
+                schedule_doc = frappe.get_doc(
+                    "Delivery Zone Schedule", {"delivery_zone": zone_name}
+                )
 
                 # Initialize a dictionary to hold the weekly schedule for the current zone
                 weekly_schedule = {}
@@ -261,7 +310,10 @@ def get_weekly_schedule(zip_code=None):
                 # Iterate through each weekday and fetch the delivery slots
                 for day, field_name in weekdays.items():
                     delivery_slots = [
-                        {"start_time": str(slot.start_time), "end_time": str(slot.end_time)}
+                        {
+                            "start_time": str(slot.start_time),
+                            "end_time": str(slot.end_time),
+                        }
                         for slot in getattr(schedule_doc, field_name, [])
                     ]
 
@@ -274,17 +326,26 @@ def get_weekly_schedule(zip_code=None):
                     all_zone_schedules[zone_name] = {"weekly_schedule": weekly_schedule}
 
             except frappe.DoesNotExistError:
-                frappe.log_error(message=f"Schedule not found for zone: {zone_name}", title="Schedule Not Found")
+                frappe.log_error(
+                    message=f"Schedule not found for zone: {zone_name}",
+                    title="Schedule Not Found",
+                )
                 continue
 
         # Return the appropriate result
         if zip_code:
-            return {"zones": {zones[0].zone_name: all_zone_schedules.get(zones[0].zone_name)}}
+            return {
+                "zones": {
+                    zones[0].zone_name: all_zone_schedules.get(zones[0].zone_name)
+                }
+            }
         else:
             return {"zones": all_zone_schedules}
 
     except frappe.exceptions.ValidationError as e:
-        frappe.log_error(message=str(e), title="Validation Error in get_weekly_schedule_by_zip")
+        frappe.log_error(
+            message=str(e), title="Validation Error in get_weekly_schedule_by_zip"
+        )
         return {"error": str(e)}
 
     except frappe.exceptions.DoesNotExistError as e:
@@ -292,9 +353,10 @@ def get_weekly_schedule(zip_code=None):
         return {"error": str(e)}
 
     except Exception as e:
-        frappe.log_error(message=str(e), title="Unexpected Error in get_weekly_schedule_by_zip")
+        frappe.log_error(
+            message=str(e), title="Unexpected Error in get_weekly_schedule_by_zip"
+        )
         return {"error": "An unexpected error occurred. Please try again later."}
-
 
 
 @frappe.whitelist(allow_guest=True)
@@ -304,7 +366,7 @@ def get_product_filter_data(query_args=None):
 
     Args:
         query_args (dict): contains filters to get products list
-	   Query Args filters:
+           Query Args filters:
         search (str): Search Term.
         field_filters (dict): Keys include item_group, brand, etc.
         attribute_filters(dict): Keys include Color, Size, etc.
@@ -315,7 +377,6 @@ def get_product_filter_data(query_args=None):
     if isinstance(query_args, str):
         query_args = json.loads(query_args)
 
-    
     query_args = frappe._dict(query_args)
 
     if query_args:
@@ -361,7 +422,7 @@ def get_product_filter_data(query_args=None):
         filter_engine = ProductFiltersBuilder()
         filters["discount_filters"] = filter_engine.get_discount_filters(discounts)
         logger.debug(filters["discount_filters"])
-    
+
     # Adding ratings to each product
     for item in result["items"]:
         item_code = item.get("item_code")
@@ -369,14 +430,15 @@ def get_product_filter_data(query_args=None):
             qty_limits = get_cart_qty_limits(item_code)
             item["minimum_qty"] = qty_limits["minimum_qty"]
             item["maximum_qty"] = qty_limits["maximum_qty"]
-            ratings = frappe.db.get_all("Item Review", filters={"item": item_code}, fields=["rating"])
+            ratings = frappe.db.get_all(
+                "Item Review", filters={"item": item_code}, fields=["rating"]
+            )
             if ratings:
                 total_rating = sum([r["rating"] for r in ratings])
                 average_rating = total_rating / len(ratings)
                 item["rating"] = round(average_rating, 1)  # Round to 2 decimal places
             else:
                 item["rating"] = 0  # Default if no ratings available
-
 
     return {
         "items": result["items"] or [],
@@ -390,16 +452,14 @@ def get_product_filter_data(query_args=None):
 def get_cart_qty_limits(item_code):
     # Fetch both custom_minimum_cart_qty and custom_maximum_cart_qty
     min_qty, max_qty = frappe.db.get_value(
-        'Item', 
-        item_code, 
-        ['custom_minimum_cart_qty', 'custom_maximum_cart_qty']
-    ) or (None, None)  # Default to None if no record found
+        "Item", item_code, ["custom_minimum_cart_qty", "custom_maximum_cart_qty"]
+    ) or (
+        None,
+        None,
+    )  # Default to None if no record found
 
     # Return 0 if values are None
-    return {
-        "minimum_qty": min_qty or 0,
-        "maximum_qty": max_qty or 0
-    }
+    return {"minimum_qty": min_qty or 0, "maximum_qty": max_qty or 0}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -420,15 +480,19 @@ def get_website_item_details(item_code):
             # "image": website_item.website_image,
             "item_group": website_item.item_group,
             "web_long_description": website_item.web_long_description,
-            "is_in_stock": (frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty") or 0) > 0,
+            "is_in_stock": (
+                frappe.db.get_value("Bin", {"item_code": item_code}, "actual_qty") or 0
+            )
+            > 0,
             "uom": website_item.stock_uom,
-            "brand": website_item.brand
+            "brand": website_item.brand,
         }
         # get_stock_availability(item_details, website_item.get("website_warehouse"));
-        
 
         # Get stock quantity
-        stock_qty = frappe.db.get_value("Bin", {"item_code": item_code}, "projected_qty ")
+        stock_qty = frappe.db.get_value(
+            "Bin", {"item_code": item_code}, "projected_qty "
+        )
         item_details["stock_qty"] = stock_qty if stock_qty else 0
         qty_limits = get_cart_qty_limits(item_code)
         item_details["minimum_qty"] = qty_limits["minimum_qty"]
@@ -436,31 +500,37 @@ def get_website_item_details(item_code):
 
         try:
             # Fetch product information including pricing details
-            product_info = get_product_info_for_website(item_code, skip_quotation_creation=True).get(
-                "product_info"
-            )
+            product_info = get_product_info_for_website(
+                item_code, skip_quotation_creation=True
+            ).get("product_info")
             if product_info and product_info["price"]:
-                item_details.update({
-                    "currency": product_info["price"].get("currency"),
-                    "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                    "formatted_price": product_info["price"].get("formatted_price"),
-                    "price_list_rate": product_info["price"].get("price_list_rate")
-                })
+                item_details.update(
+                    {
+                        "currency": product_info["price"].get("currency"),
+                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate"),
+                    }
+                )
             if product_info["price"].get("discount_percent"):
-                item_details.update({
-                    "discount_percent" : flt(product_info["price"].discount_percent)
-                })
+                item_details.update(
+                    {"discount_percent": flt(product_info["price"].discount_percent)}
+                )
             if product_info["price"].get("formatted_mrp"):
-                item_details.update({
-                    "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
-                        "formatted_discount_rate"
-                    )
-                })
+                item_details.update(
+                    {
+                        "discount": product_info["price"].get(
+                            "formatted_discount_percent"
+                        )
+                        or product_info["price"].get("formatted_discount_rate")
+                    }
+                )
         except Exception as e:
-            frappe.log_error(message=f"Error fetching product info for item {item_code}: {str(e)}", 
-                                title="Get New Website Items Error")
+            frappe.log_error(
+                message=f"Error fetching product info for item {item_code}: {str(e)}",
+                title="Get New Website Items Error",
+            )
             # You may also choose to skip this item or return a default value instead
-            
 
         # Get item price from Item Price doctype
         # item_price = frappe.db.get_value("Item Price", {"item_code": item_code, "selling": 1}, ["price_list_rate", "currency"], as_dict=True)
@@ -471,37 +541,62 @@ def get_website_item_details(item_code):
         #     })
 
         # Get item reviews from the custom Website Item Review doctype
-        reviews = frappe.get_all("Item Review", filters={"item": item_code},
-                                 fields=["customer", "rating", "review_title", "comment", "published_on"], order_by="published_on desc")
+        reviews = frappe.get_all(
+            "Item Review",
+            filters={"item": item_code},
+            fields=["customer", "rating", "review_title", "comment", "published_on"],
+            order_by="published_on desc",
+        )
 
-        item_details.update({
-            "reviews": reviews,
-            "average_rating": round(sum([r['rating'] for r in reviews]) / len(reviews),1) if reviews else 0
-        })
+        item_details.update(
+            {
+                "reviews": reviews,
+                "average_rating": (
+                    round(sum([r["rating"] for r in reviews]) / len(reviews), 1)
+                    if reviews
+                    else 0
+                ),
+            }
+        )
 
         # Get multiple images from Website Slideshow Item
         logger.debug(website_item.slideshow)
         image_list = []
         slideshow_name = website_item.slideshow
-        
+
         if slideshow_name:
-            images = frappe.get_all("Website Slideshow Item", filters={"parent": slideshow_name}, fields=["image"], order_by="idx asc")
+            images = frappe.get_all(
+                "Website Slideshow Item",
+                filters={"parent": slideshow_name},
+                fields=["image"],
+                order_by="idx asc",
+            )
             image_list = [{"image": img.image} for img in images]
-        else : 
+        else:
             image_list = [{"image": website_item.website_image}]
         item_details["image_list"] = image_list
 
         # Fetch website specifications
-        specifications = frappe.get_all("Item Website Specification", filters={"parent": website_item.name}, 
-                                        fields=["label", "description"], order_by="idx asc")
-        item_details["specifications"] = [{"label": spec.label, "value": extract_value(spec.description)} for spec in specifications]
+        specifications = frappe.get_all(
+            "Item Website Specification",
+            filters={"parent": website_item.name},
+            fields=["label", "description"],
+            order_by="idx asc",
+        )
+        item_details["specifications"] = [
+            {"label": spec.label, "value": extract_value(spec.description)}
+            for spec in specifications
+        ]
 
         logger.debug(item_details)
 
         return item_details
 
     except frappe.DoesNotExistError:
-        frappe.log_error(f"Website Item with code {item_code} does not exist.", "Item Not Found Error")
+        frappe.log_error(
+            f"Website Item with code {item_code} does not exist.",
+            "Item Not Found Error",
+        )
         return {"error": f"Website Item with code {item_code} does not exist."}, 404
 
     except frappe.ValidationError as e:
@@ -509,9 +604,11 @@ def get_website_item_details(item_code):
         return {"error": str(e)}, 400
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Unexpected Error in get_website_item_details API")
+        frappe.log_error(
+            frappe.get_traceback(), "Unexpected Error in get_website_item_details API"
+        )
         return {"error": "An unexpected error occurred. Please try again later."}, 500
-    
+
 
 def extract_value(content):
     # Check if content contains HTML tags
@@ -530,12 +627,15 @@ def get_stock_availability(item):
     """Modify item object and add stock details."""
     from webshop.templates.pages.wishlist import (
         get_stock_availability as get_stock_availability_from_template,
-	)
+    )
+
     # item.update({
     #     "is_stock_item": False
     # })
 
-    item.is_in_stock = get_stock_availability_from_template(item.item_code, item.warehouse)
+    item.is_in_stock = get_stock_availability_from_template(
+        item.item_code, item.warehouse
+    )
     # # warehouse = item_details.get("website_warehouse")
     # is_stock_item = frappe.get_cached_value("Item", item_details.item_code, "is_stock_item")
     # logger.debug(is_stock_item)
@@ -553,6 +653,7 @@ def get_stock_availability(item):
     #     # stock item and has warehouse
     #     item_details.is_in_stock = get_stock_availability_from_template(item_details.item_code, warehouse)
 
+
 # @frappe.whitelist(allow_guest=True)
 # def search(query=None):
 #     from webshop.templates.pages.product_search import (
@@ -561,11 +662,12 @@ def get_stock_availability(item):
 #     )
 #     product_results = product_search_from_template(query)
 #     category_results = get_category_suggestions_from_template(query)
-    
+
 #     return {
 # 		"product_results": product_results.get("results") or [],
 # 		"category_results": category_results.get("results") or [],
 # 	}
+
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def search(query=None, page=1, page_size=10):
@@ -574,14 +676,17 @@ def search(query=None, page=1, page_size=10):
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
             frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-        
+
         # Validate API key authorization
         api_keys = auth_header.split(" ")[1:]
         if not api_keys:
-            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
 
         validate_auth_via_api_keys(api_keys)
-        
+
         # Validate and parse page and page_size
         try:
             page = int(page)
@@ -589,7 +694,10 @@ def search(query=None, page=1, page_size=10):
             if page <= 0 or page_size <= 0:
                 raise ValueError("Page and page size must be positive integers")
         except ValueError as e:
-            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+            frappe.throw(
+                _("Invalid page or page size: {0}").format(str(e)),
+                frappe.InvalidRequestError,
+            )
 
         # Calculate offset and limit for pagination
         offset = (page - 1) * page_size
@@ -598,12 +706,12 @@ def search(query=None, page=1, page_size=10):
             "Item",
             filters={
                 "item_name": ["like", f"%{query}%"],
-                "disabled": 0,                # Assuming this field indicates if the item is active
-                "published_in_website": 1              # Assuming this field indicates if the item is published
+                "disabled": 0,  # Assuming this field indicates if the item is active
+                "published_in_website": 1,  # Assuming this field indicates if the item is published
             },
             fields=["item_code"],
             limit_start=offset,
-            limit_page_length=limit
+            limit_page_length=limit,
         )
 
         item_codes = [item["item_code"] for item in items]
@@ -613,44 +721,66 @@ def search(query=None, page=1, page_size=10):
             "Website Item",
             filters={"item_code": ["in", item_codes], "published": 1},
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "short_description", 
+                "web_item_name",
+                "name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "short_description",
                 "ranking",
-            ]
+            ],
         )
 
         for item in searched_items:
             try:
                 # Get stock quantity
-                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                stock_qty = frappe.db.get_value(
+                    "Bin", {"item_code": item.item_code}, "projected_qty"
+                )
                 item["stock_qty"] = stock_qty if stock_qty else 0
 
                 # Get product pricing information
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "currency": product_info["price"].get("currency"),
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "currency": product_info["price"].get("currency"),
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                     if product_info["price"].get("discount_percent"):
-                        item.update({
-                            "discount_percent": flt(product_info["price"].get("discount_percent")),
-                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
-                        })
+                        item.update(
+                            {
+                                "discount_percent": flt(
+                                    product_info["price"].get("discount_percent")
+                                ),
+                                "discount": product_info["price"].get(
+                                    "formatted_discount_percent"
+                                )
+                                or product_info["price"].get("formatted_discount_rate"),
+                            }
+                        )
             except Exception as e:
-                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching product info for item {item.name}: {str(e)}",
+                    "Get Offer Items API",
+                )
 
             try:
                 # Get item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 if ratings:
                     qty_limits = get_cart_qty_limits(item.item_code)
                     item["minimum_qty"] = qty_limits["minimum_qty"]
@@ -661,7 +791,10 @@ def search(query=None, page=1, page_size=10):
                 else:
                     item["rating"] = 0  # No ratings, default to 0
             except Exception as e:
-                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching ratings for item {item.item_code}: {str(e)}",
+                    "Get Offer Items API",
+                )
                 item["rating"] = 0  # Default rating if fetching fails
 
         # Determine total items and total pages for pagination
@@ -670,8 +803,8 @@ def search(query=None, page=1, page_size=10):
             filters={
                 "item_name": ["like", f"%{query}%"],
                 "disabled": 0,
-                "published_in_website": 1 
-            }
+                "published_in_website": 1,
+            },
         )
 
         total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
@@ -687,25 +820,24 @@ def search(query=None, page=1, page_size=10):
                 "total_pages": total_pages,
             },
         }
-    
+
     except frappe.AuthenticationError:
         frappe.local.response["http_status_code"] = 401
         frappe.response["data"] = {
             "status": "error",
-            "message": "Unauthorized access. Invalid or missing API key."
+            "message": "Unauthorized access. Invalid or missing API key.",
         }
     except frappe.ValidationError as e:
         frappe.local.response["http_status_code"] = 400
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
     except Exception as e:
-        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Top Selling Product API")
+        frappe.log_error(
+            f"An unexpected error occurred: {str(e)}", "Get Top Selling Product API"
+        )
         frappe.local.response["http_status_code"] = 500
         frappe.response["data"] = {
             "status": "error",
-            "message": "An unexpected error occurred. Please try again later."
+            "message": "An unexpected error occurred. Please try again later.",
         }
 
 
@@ -726,56 +858,73 @@ def get_new_website_items(limit=10, price_list="Standard Selling"):
             "Website Item",
             filters={"published": 1},  # Ensure only published items are fetched
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "web_long_description", 
-                "short_description", 
-                "route", 
-                "website_warehouse", 
-                "ranking", 
-                "on_backorder"
+                "web_item_name",
+                "name",
+                "item_name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "web_long_description",
+                "short_description",
+                "route",
+                "website_warehouse",
+                "ranking",
+                "on_backorder",
             ],
             order_by="creation desc",  # Order by creation date to get the newest items
-            limit=limit  # Limit the number of items returned
+            limit=limit,  # Limit the number of items returned
         )
-        
+
         for item in items:
             try:
                 # Fetch product information including pricing details
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get(
-                    "product_info"
-                )
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                 if product_info["price"].get("discount_percent"):
-                    item.update({
-                        "discount_percent" : flt(product_info["price"].discount_percent)
-                    })
+                    item.update(
+                        {
+                            "discount_percent": flt(
+                                product_info["price"].discount_percent
+                            )
+                        }
+                    )
                 if item.formatted_mrp:
-                    item.update({
-                        "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
-                            "formatted_discount_rate"
-                        )
-                    })
+                    item.update(
+                        {
+                            "discount": product_info["price"].get(
+                                "formatted_discount_percent"
+                            )
+                            or product_info["price"].get("formatted_discount_rate")
+                        }
+                    )
             except Exception as e:
-                frappe.log_error(message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 # You may also choose to skip this item or return a default value instead
                 continue
 
             try:
                 # Fetch item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -786,12 +935,17 @@ def get_new_website_items(limit=10, price_list="Standard Selling"):
                 else:
                     item["rating"] = 0
             except Exception as e:
-                frappe.log_error(message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 item["rating"] = 0  # Default value if rating fetch fails
 
     except Exception as e:
-        frappe.log_error(message=f"Error fetching website items: {str(e)}", title="Get New Website Items Error")
+        frappe.log_error(
+            message=f"Error fetching website items: {str(e)}",
+            title="Get New Website Items Error",
+        )
         return {"error": "An error occurred while fetching new website items."}
 
     return {"items": items}
@@ -818,9 +972,9 @@ def get_hot_deals_website_items(limit=10, price_list="Standard Selling"):
                 "apply_on": "Item Code",
                 "valid_from": ["<=", frappe.utils.nowdate()],
                 "valid_upto": ["in", ["", None, ["gt", frappe.utils.nowdate()]]],
-                "discount_percentage": [">", 0]
+                "discount_percentage": [">", 0],
             },
-            fields=["name"]
+            fields=["name"],
         )
 
         # If no active pricing rules are found, return an empty list
@@ -832,7 +986,7 @@ def get_hot_deals_website_items(limit=10, price_list="Standard Selling"):
         items = frappe.get_all(
             "Pricing Rule Item Code",
             filters={"parent": ["in", pricing_rule_names]},
-            fields=["item_code"]
+            fields=["item_code"],
         )
         logger.debug(items)
 
@@ -843,60 +997,77 @@ def get_hot_deals_website_items(limit=10, price_list="Standard Selling"):
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "web_long_description", 
-                "short_description", 
-                "route", 
-                "website_warehouse", 
-                "ranking", 
-                "on_backorder"
+                "web_item_name",
+                "name",
+                "item_name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "web_long_description",
+                "short_description",
+                "route",
+                "website_warehouse",
+                "ranking",
+                "on_backorder",
             ],
             order_by="creation desc",  # Order by creation date to get the newest items
-            limit=limit
+            limit=limit,
         )
 
         # Step 3: Enhance each item with pricing and rating details
         for item in items:
             try:
                 # Fetch product information including pricing details
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get(
-                    "product_info"
-                )
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                 if product_info["price"].get("discount_percent"):
-                    item.update({
-                        "discount_percent" : flt(product_info["price"].discount_percent)
-                    })
+                    item.update(
+                        {
+                            "discount_percent": flt(
+                                product_info["price"].discount_percent
+                            )
+                        }
+                    )
                 if item.formatted_mrp:
-                    item.update({
-                        "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
-                            "formatted_discount_rate"
-                        )
-                    })
+                    item.update(
+                        {
+                            "discount": product_info["price"].get(
+                                "formatted_discount_percent"
+                            )
+                            or product_info["price"].get("formatted_discount_rate")
+                        }
+                    )
             except Exception as e:
-                frappe.log_error(message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 # You may also choose to skip this item or return a default value instead
                 continue
 
             try:
                 # Fetch item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -907,8 +1078,10 @@ def get_hot_deals_website_items(limit=10, price_list="Standard Selling"):
                 else:
                     item["rating"] = 0
             except Exception as e:
-                frappe.log_error(message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 item["rating"] = 0  # Default value if rating fetch fails
 
         return {"items": items}
@@ -925,14 +1098,17 @@ def get_top_selling_products(period=None, page=1, page_size=10):
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
             frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-        
+
         # Validate API key authorization
         api_keys = auth_header.split(" ")[1:]
         if not api_keys:
-            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
 
         validate_auth_via_api_keys(api_keys)
-        
+
         # Validate and parse page and page_size
         try:
             page = int(page)
@@ -940,7 +1116,10 @@ def get_top_selling_products(period=None, page=1, page_size=10):
             if page <= 0 or page_size <= 0:
                 raise ValueError("Page and page size must be positive integers")
         except ValueError as e:
-            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+            frappe.throw(
+                _("Invalid page or page size: {0}").format(str(e)),
+                frappe.InvalidRequestError,
+            )
 
         # Calculate offset and limit for pagination
         offset = (page - 1) * page_size
@@ -965,7 +1144,7 @@ def get_top_selling_products(period=None, page=1, page_size=10):
             group_by="item_code",
             order_by="total_sold desc",
             limit_start=offset,
-            limit_page_length=limit
+            limit_page_length=limit,
         )
 
         item_codes = [item["item_code"] for item in top_items]
@@ -975,44 +1154,66 @@ def get_top_selling_products(period=None, page=1, page_size=10):
             "Website Item",
             filters={"item_code": ["in", item_codes], "published": 1},
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "short_description", 
+                "web_item_name",
+                "name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "short_description",
                 "ranking",
-            ]
+            ],
         )
 
         for item in top_selling_items:
             try:
                 # Get stock quantity
-                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                stock_qty = frappe.db.get_value(
+                    "Bin", {"item_code": item.item_code}, "projected_qty"
+                )
                 item["stock_qty"] = stock_qty if stock_qty else 0
 
                 # Get product pricing information
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "currency": product_info["price"].get("currency"),
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "currency": product_info["price"].get("currency"),
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                     if product_info["price"].get("discount_percent"):
-                        item.update({
-                            "discount_percent": flt(product_info["price"].get("discount_percent")),
-                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
-                        })
+                        item.update(
+                            {
+                                "discount_percent": flt(
+                                    product_info["price"].get("discount_percent")
+                                ),
+                                "discount": product_info["price"].get(
+                                    "formatted_discount_percent"
+                                )
+                                or product_info["price"].get("formatted_discount_rate"),
+                            }
+                        )
             except Exception as e:
-                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching product info for item {item.name}: {str(e)}",
+                    "Get Offer Items API",
+                )
 
             try:
                 # Get item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 if ratings:
                     qty_limits = get_cart_qty_limits(item.item_code)
                     item["minimum_qty"] = qty_limits["minimum_qty"]
@@ -1023,7 +1224,10 @@ def get_top_selling_products(period=None, page=1, page_size=10):
                 else:
                     item["rating"] = 0  # No ratings, default to 0
             except Exception as e:
-                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching ratings for item {item.item_code}: {str(e)}",
+                    "Get Offer Items API",
+                )
                 item["rating"] = 0  # Default rating if fetching fails
 
         # Determine total items and total pages for pagination
@@ -1032,8 +1236,11 @@ def get_top_selling_products(period=None, page=1, page_size=10):
             filters=filters,
             fields=["item_code", "sum(qty) as total_sold"],
             group_by="item_code",
-            order_by="total_sold desc")
-        total_pages = (len(total_items) + page_size - 1) // page_size  # Ceiling division
+            order_by="total_sold desc",
+        )
+        total_pages = (
+            len(total_items) + page_size - 1
+        ) // page_size  # Ceiling division
 
         # Return the response with pagination details
         frappe.response["data"] = {
@@ -1046,25 +1253,24 @@ def get_top_selling_products(period=None, page=1, page_size=10):
                 "total_pages": total_pages,
             },
         }
-    
+
     except frappe.AuthenticationError:
         frappe.local.response["http_status_code"] = 401
         frappe.response["data"] = {
             "status": "error",
-            "message": "Unauthorized access. Invalid or missing API key."
+            "message": "Unauthorized access. Invalid or missing API key.",
         }
     except frappe.ValidationError as e:
         frappe.local.response["http_status_code"] = 400
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
     except Exception as e:
-        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Top Selling Product API")
+        frappe.log_error(
+            f"An unexpected error occurred: {str(e)}", "Get Top Selling Product API"
+        )
         frappe.local.response["http_status_code"] = 500
         frappe.response["data"] = {
             "status": "error",
-            "message": "An unexpected error occurred. Please try again later."
+            "message": "An unexpected error occurred. Please try again later.",
         }
 
 
@@ -1075,14 +1281,17 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
             frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-        
+
         # Validate API key authorization
         api_keys = auth_header.split(" ")[1:]
         if not api_keys:
-            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
 
         validate_auth_via_api_keys(api_keys)
-        
+
         # Validate and parse page and page_size
         try:
             page = int(page)
@@ -1090,7 +1299,10 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
             if page <= 0 or page_size <= 0:
                 raise ValueError("Page and page size must be positive integers")
         except ValueError as e:
-            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+            frappe.throw(
+                _("Invalid page or page size: {0}").format(str(e)),
+                frappe.InvalidRequestError,
+            )
 
         # Calculate offset and limit for pagination
         offset = (page - 1) * page_size
@@ -1108,7 +1320,9 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
         #     },
         #     fields=["name", "valid_upto"]
         # )
-        promotional_scheme_doc = frappe.get_doc("Promotional Scheme", "Limited Time Offer")
+        promotional_scheme_doc = frappe.get_doc(
+            "Promotional Scheme", "Limited Time Offer"
+        )
 
         limited_time_offer_rules = frappe.get_all(
             "Pricing Rule",
@@ -1116,9 +1330,9 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
                 "disable": 0,
                 "promotional_scheme": "Limited Time Offer",
                 "valid_from": ["<=", frappe.utils.nowdate()],
-                "discount_percentage": [">", 0]
+                "discount_percentage": [">", 0],
             },
-            fields=["name", "valid_upto", "apply_on"]
+            fields=["name", "valid_upto", "apply_on"],
         )
 
         # If no active pricing rules are found, return an empty list
@@ -1126,30 +1340,33 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
             return {"items": []}
 
         # Map pricing rule valid_upto to item codes
-        pricing_rule_map = {rule["name"]: rule["valid_upto"] for rule in limited_time_offer_rules}
+        pricing_rule_map = {
+            rule["name"]: rule["valid_upto"] for rule in limited_time_offer_rules
+        }
         pricing_rule_names = list(pricing_rule_map.keys())
 
-        if(limited_time_offer_rules[0].apply_on == 'Item Code'):
+        if limited_time_offer_rules[0].apply_on == "Item Code":
             # Fetch items linked to these pricing rules
             items = frappe.get_all(
                 "Pricing Rule Item Code",
                 filters={"parent": ["in", pricing_rule_names]},
-                fields=["item_code", "parent"]
+                fields=["item_code", "parent"],
             )
-        elif (limited_time_offer_rules[0].apply_on == 'Item Group'):
+        elif limited_time_offer_rules[0].apply_on == "Item Group":
             item_groups = frappe.get_all(
                 "Pricing Rule Item Group",
-                filters={
-                    "parent": limited_time_offer_rules[0].name
-                },
-                fields=["item_group"]
+                filters={"parent": limited_time_offer_rules[0].name},
+                fields=["item_group"],
             )
             item_group_names = [item_group["item_group"] for item_group in item_groups]
             # Fetch items linked to these item_groups
             items = frappe.get_all(
                 "Item",
-                filters={"item_group": ["in", item_group_names], "published_in_website":1},
-                fields=["item_code"]
+                filters={
+                    "item_group": ["in", item_group_names],
+                    "published_in_website": 1,
+                },
+                fields=["item_code"],
             )
 
         if not items:
@@ -1162,22 +1379,22 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "short_description", 
+                "web_item_name",
+                "name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "short_description",
                 "ranking",
             ],
             order_by="ranking desc",
             limit_start=offset,
-            limit_page_length=limit
+            limit_page_length=limit,
         )
 
         # Create a dictionary to map item codes to their associated pricing rule expiry dates
@@ -1189,36 +1406,58 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
             try:
                 # Attach the expiry date from the pricing rule to the item if available
                 # item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates.get(item["item_code"]))
-                item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates)
+                item["offer_ends"] = "This offer ends on " + date_to_words(expiry_dates)
                 # Get stock quantity
-                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                stock_qty = frappe.db.get_value(
+                    "Bin", {"item_code": item.item_code}, "projected_qty"
+                )
                 item["stock_qty"] = stock_qty if stock_qty else 0
 
                 # Get product pricing information
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "currency": product_info["price"].get("currency"),
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "currency": product_info["price"].get("currency"),
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                     if product_info["price"].get("discount_percent"):
-                        item.update({
-                            "discount_percent": flt(product_info["price"].get("discount_percent")),
-                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
-                        })
+                        item.update(
+                            {
+                                "discount_percent": flt(
+                                    product_info["price"].get("discount_percent")
+                                ),
+                                "discount": product_info["price"].get(
+                                    "formatted_discount_percent"
+                                )
+                                or product_info["price"].get("formatted_discount_rate"),
+                            }
+                        )
 
                 # Add pricing rule expiration date
                 # item["pricing_rule_expiration"] = pricing_rule_map.get(item.get("parent"))
                 # item["pricing_rule_expiration"] = pricing_rule_map.get('PRLE-0003')
 
             except Exception as e:
-                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching product info for item {item.name}: {str(e)}",
+                    "Get Offer Items API",
+                )
 
             try:
                 # Get item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -1229,7 +1468,10 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
                 else:
                     item["rating"] = 0  # No ratings, default to 0
             except Exception as e:
-                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching ratings for item {item.item_code}: {str(e)}",
+                    "Get Offer Items API",
+                )
                 item["rating"] = 0  # Default rating if fetching fails
 
         # Determine total items and total pages for pagination
@@ -1237,9 +1479,9 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
-            )
+        )
         total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
 
         # Return the response with pagination details
@@ -1259,40 +1501,39 @@ def get_limited_time_offers(page=1, page_size=10, price_list="Standard Selling")
         frappe.local.response["http_status_code"] = 401
         frappe.response["data"] = {
             "status": "error",
-            "message": "Unauthorized access. Invalid or missing API key."
+            "message": "Unauthorized access. Invalid or missing API key.",
         }
     except frappe.ValidationError as e:
         frappe.local.response["http_status_code"] = 400
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
     except Exception as e:
-        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Limited Time Offers API")
+        frappe.log_error(
+            f"An unexpected error occurred: {str(e)}", "Get Limited Time Offers API"
+        )
         frappe.local.response["http_status_code"] = 500
         frappe.response["data"] = {
             "status": "error",
-            "message": "An unexpected error occurred. Please try again later."
+            "message": "An unexpected error occurred. Please try again later.",
         }
 
 
 def end_of_day_iso(date_string):
     # Combine date string with '23:59:59'
     date_with_time = f"{date_string} 23:59:59"
-    
+
     # Convert to datetime using Frappe's get_datetime utility
     datetime_obj = get_datetime(date_with_time)
-    
+
     # Convert to ISO format
     iso_datetime = datetime_obj.isoformat()
-    
+
     return iso_datetime
 
 
 def date_to_words(date_str):
     """
     Converts a date string from Frappe to a human-readable date in words.
-    
+
     Args:
         date_str (str): The date string in 'YYYY-MM-DD' format.
 
@@ -1308,7 +1549,7 @@ def date_to_words(date_str):
     except Exception as e:
         frappe.log_error(f"Error converting date: {e}", "Date to Words Conversion")
         return None
-    
+
 
 @frappe.whitelist(allow_guest=True)
 def get_special_discount_items(limit=10):
@@ -1328,38 +1569,38 @@ def get_special_discount_items(limit=10):
             "Website Offer",
             filters={"offer_title": "Special Discount"},
             fields=["parent"],
-            limit=limit
+            limit=limit,
         )
         if not parents:
             return {"items": []}
-        
-        web_items = ','.join([parent['parent'] for parent in parents])
+
+        web_items = ",".join([parent["parent"] for parent in parents])
 
         # Fetch Website Items linked to these web_items
         items = frappe.get_all(
             "Website Item",
             filters={
                 "name": ["in", web_items],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "web_long_description", 
-                "short_description", 
-                "route", 
-                "website_warehouse", 
-                "ranking", 
-                "on_backorder"
+                "web_item_name",
+                "name",
+                "item_name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "web_long_description",
+                "short_description",
+                "route",
+                "website_warehouse",
+                "ranking",
+                "on_backorder",
             ],
             order_by="creation desc",  # Order by creation date to get the newest items
-            limit=limit
+            limit=limit,
         )
 
         logger.debug("get_special_discount_items")
@@ -1369,34 +1610,51 @@ def get_special_discount_items(limit=10):
         for item in items:
             try:
                 # Fetch product information including pricing details
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get(
-                    "product_info"
-                )
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                 if product_info["price"].get("discount_percent"):
-                    item.update({
-                        "discount_percent" : flt(product_info["price"].discount_percent)
-                    })
+                    item.update(
+                        {
+                            "discount_percent": flt(
+                                product_info["price"].discount_percent
+                            )
+                        }
+                    )
                 if item.formatted_mrp:
-                    item.update({
-                        "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
-                            "formatted_discount_rate"
-                        )
-                    })
+                    item.update(
+                        {
+                            "discount": product_info["price"].get(
+                                "formatted_discount_percent"
+                            )
+                            or product_info["price"].get("formatted_discount_rate")
+                        }
+                    )
             except Exception as e:
-                frappe.log_error(message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 # You may also choose to skip this item or return a default value instead
                 continue
 
             try:
                 # Fetch item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -1407,8 +1665,10 @@ def get_special_discount_items(limit=10):
                 else:
                     item["rating"] = 0
             except Exception as e:
-                frappe.log_error(message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 item["rating"] = 0  # Default value if rating fetch fails
 
         return {"items": items}
@@ -1416,7 +1676,7 @@ def get_special_discount_items(limit=10):
     except Exception as e:
         frappe.log_error(f"Failed to get hot deals: {str(e)}")
         return {"exc": "Something went wrong!"}
-    
+
 
 @frappe.whitelist(allow_guest=True)
 def get_offer_items(offer_title, page=1, page_size=10):
@@ -1425,14 +1685,17 @@ def get_offer_items(offer_title, page=1, page_size=10):
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
             frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-        
+
         # Validate API key authorization
         api_keys = auth_header.split(" ")[1:]
         if not api_keys:
-            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
 
         validate_auth_via_api_keys(api_keys)
-        
+
         # Validate and parse page and page_size
         try:
             page = int(page)
@@ -1440,7 +1703,10 @@ def get_offer_items(offer_title, page=1, page_size=10):
             if page <= 0 or page_size <= 0:
                 raise ValueError("Page and page size must be positive integers")
         except ValueError as e:
-            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+            frappe.throw(
+                _("Invalid page or page size: {0}").format(str(e)),
+                frappe.InvalidRequestError,
+            )
 
         # Calculate offset and limit for pagination
         offset = (page - 1) * page_size
@@ -1453,7 +1719,10 @@ def get_offer_items(offer_title, page=1, page_size=10):
         valid_upto = getdate(promotional_scheme_doc.valid_upto)
 
         if not (valid_from <= current_date <= valid_upto):
-            frappe.throw(_("The promotional scheme '{0}' is not active.").format(offer_title), frappe.ValidationError)
+            frappe.throw(
+                _("The promotional scheme '{0}' is not active.").format(offer_title),
+                frappe.ValidationError,
+            )
 
         offer_rules = frappe.get_all(
             "Pricing Rule",
@@ -1461,9 +1730,9 @@ def get_offer_items(offer_title, page=1, page_size=10):
                 "disable": 0,
                 "promotional_scheme": promotional_scheme_doc.name,
                 "valid_from": ["<=", frappe.utils.nowdate()],
-                "discount_percentage": [">", 0]
+                "discount_percentage": [">", 0],
             },
-            fields=["name", "valid_upto", "apply_on"]
+            fields=["name", "valid_upto", "apply_on"],
         )
 
         # If no active pricing rules are found, return an empty list
@@ -1474,27 +1743,28 @@ def get_offer_items(offer_title, page=1, page_size=10):
         pricing_rule_map = {rule["name"]: rule["valid_upto"] for rule in offer_rules}
         pricing_rule_names = list(pricing_rule_map.keys())
 
-        if(offer_rules[0].apply_on == 'Item Code'):
+        if offer_rules[0].apply_on == "Item Code":
             # Fetch items linked to these pricing rules
             items = frappe.get_all(
                 "Pricing Rule Item Code",
                 filters={"parent": ["in", pricing_rule_names]},
-                fields=["item_code", "parent"]
+                fields=["item_code", "parent"],
             )
-        elif (offer_rules[0].apply_on == 'Item Group'):
+        elif offer_rules[0].apply_on == "Item Group":
             item_groups = frappe.get_all(
                 "Pricing Rule Item Group",
-                filters={
-                    "parent": offer_rules[0].name
-                },
-                fields=["item_group"]
+                filters={"parent": offer_rules[0].name},
+                fields=["item_group"],
             )
             item_group_names = [item_group["item_group"] for item_group in item_groups]
             # Fetch items linked to these item_groups
             items = frappe.get_all(
                 "Item",
-                filters={"item_group": ["in", item_group_names], "published_in_website":1},
-                fields=["item_code"]
+                filters={
+                    "item_group": ["in", item_group_names],
+                    "published_in_website": 1,
+                },
+                fields=["item_code"],
             )
 
         if not items:
@@ -1507,22 +1777,22 @@ def get_offer_items(offer_title, page=1, page_size=10):
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "short_description", 
+                "web_item_name",
+                "name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "short_description",
                 "ranking",
             ],
             order_by="ranking desc",
             limit_start=offset,
-            limit_page_length=limit
+            limit_page_length=limit,
         )
 
         # Create a dictionary to map item codes to their associated pricing rule expiry dates
@@ -1534,36 +1804,58 @@ def get_offer_items(offer_title, page=1, page_size=10):
             try:
                 # Attach the expiry date from the pricing rule to the item if available
                 # item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates.get(item["item_code"]))
-                item["offer_ends"] = "This offer ends on "+ date_to_words(expiry_dates)
+                item["offer_ends"] = "This offer ends on " + date_to_words(expiry_dates)
                 # Get stock quantity
-                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                stock_qty = frappe.db.get_value(
+                    "Bin", {"item_code": item.item_code}, "projected_qty"
+                )
                 item["stock_qty"] = stock_qty if stock_qty else 0
 
                 # Get product pricing information
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "currency": product_info["price"].get("currency"),
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "currency": product_info["price"].get("currency"),
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                     if product_info["price"].get("discount_percent"):
-                        item.update({
-                            "discount_percent": flt(product_info["price"].get("discount_percent")),
-                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
-                        })
+                        item.update(
+                            {
+                                "discount_percent": flt(
+                                    product_info["price"].get("discount_percent")
+                                ),
+                                "discount": product_info["price"].get(
+                                    "formatted_discount_percent"
+                                )
+                                or product_info["price"].get("formatted_discount_rate"),
+                            }
+                        )
 
                 # Add pricing rule expiration date
                 # item["pricing_rule_expiration"] = pricing_rule_map.get(item.get("parent"))
                 # item["pricing_rule_expiration"] = pricing_rule_map.get('PRLE-0003')
 
             except Exception as e:
-                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching product info for item {item.name}: {str(e)}",
+                    "Get Offer Items API",
+                )
 
             try:
                 # Get item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -1574,7 +1866,10 @@ def get_offer_items(offer_title, page=1, page_size=10):
                 else:
                     item["rating"] = 0  # No ratings, default to 0
             except Exception as e:
-                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching ratings for item {item.item_code}: {str(e)}",
+                    "Get Offer Items API",
+                )
                 item["rating"] = 0  # Default rating if fetching fails
 
         # Determine total items and total pages for pagination
@@ -1582,9 +1877,9 @@ def get_offer_items(offer_title, page=1, page_size=10):
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
-            )
+        )
         total_pages = (total_items + page_size - 1) // page_size  # Ceiling division
 
         # Return the response with pagination details
@@ -1604,22 +1899,21 @@ def get_offer_items(offer_title, page=1, page_size=10):
         frappe.local.response["http_status_code"] = 401
         frappe.response["data"] = {
             "status": "error",
-            "message": "Unauthorized access. Invalid or missing API key."
+            "message": "Unauthorized access. Invalid or missing API key.",
         }
     except frappe.ValidationError as e:
         frappe.local.response["http_status_code"] = 400
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
     except Exception as e:
-        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Limited Time Offers API")
+        frappe.log_error(
+            f"An unexpected error occurred: {str(e)}", "Get Limited Time Offers API"
+        )
         frappe.local.response["http_status_code"] = 500
         frappe.response["data"] = {
             "status": "error",
-            "message": "An unexpected error occurred. Please try again later."
+            "message": "An unexpected error occurred. Please try again later.",
         }
-    
+
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def get_offer_items_old(offer_title, page=1, page_size=10):
@@ -1628,18 +1922,21 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
         auth_header = frappe.get_request_header("Authorization", str)
         if not auth_header:
             frappe.throw("Missing Authorization header.", frappe.AuthenticationError)
-        
+
         # Validate API key authorization
         api_keys = auth_header.split(" ")[1:]
         if not api_keys:
-            frappe.throw("Authorization header is malformed or missing API keys.", frappe.AuthenticationError)
+            frappe.throw(
+                "Authorization header is malformed or missing API keys.",
+                frappe.AuthenticationError,
+            )
 
         validate_auth_via_api_keys(api_keys)
 
         # Validate offer title
         if not offer_title:
             frappe.throw("Offer Title is mandatory", frappe.ValidationError)
-        
+
         # Validate and parse page and page_size
         try:
             page = int(page)
@@ -1647,7 +1944,10 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
             if page <= 0 or page_size <= 0:
                 raise ValueError("Page and page size must be positive integers")
         except ValueError as e:
-            frappe.throw(_("Invalid page or page size: {0}").format(str(e)), frappe.InvalidRequestError)
+            frappe.throw(
+                _("Invalid page or page size: {0}").format(str(e)),
+                frappe.InvalidRequestError,
+            )
 
         # Calculate offset and limit for pagination
         offset = (page - 1) * page_size
@@ -1655,24 +1955,22 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
 
         # Fetch web item codes by offer title
         parents = frappe.get_all(
-            "Website Offer",
-            filters={"offer_title": offer_title},
-            fields=["parent"]
+            "Website Offer", filters={"offer_title": offer_title}, fields=["parent"]
         )
         if not parents:
             frappe.response["data"] = {
                 "message": "No items found for the specified offer.",
-                "items": []
+                "items": [],
             }
             return
-        
+
         # Extract web item codes
-        web_items = [parent['parent'] for parent in parents]
-        
+        web_items = [parent["parent"] for parent in parents]
+
         if not web_items:
             frappe.response["data"] = {
                 "message": "No website items linked to this offer.",
-                "items": []
+                "items": [],
             }
             return
 
@@ -1681,51 +1979,73 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
             "Website Item",
             filters={
                 "name": ["in", web_items],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "short_description", 
-                "ranking", 
+                "web_item_name",
+                "name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "short_description",
+                "ranking",
             ],
             order_by="ranking desc",
             limit_start=offset,
-            limit_page_length=limit
+            limit_page_length=limit,
         )
 
         # Enhance items with stock, pricing, and rating information
         for item in items:
             try:
                 # Get stock quantity
-                stock_qty = frappe.db.get_value("Bin", {"item_code": item.item_code}, "projected_qty")
+                stock_qty = frappe.db.get_value(
+                    "Bin", {"item_code": item.item_code}, "projected_qty"
+                )
                 item["stock_qty"] = stock_qty if stock_qty else 0
 
                 # Get product pricing information
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get("product_info")
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "currency": product_info["price"].get("currency"),
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "currency": product_info["price"].get("currency"),
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
                     if product_info["price"].get("discount_percent"):
-                        item.update({
-                            "discount_percent": flt(product_info["price"].get("discount_percent")),
-                            "discount": product_info["price"].get("formatted_discount_percent") or product_info["price"].get("formatted_discount_rate")
-                        })
+                        item.update(
+                            {
+                                "discount_percent": flt(
+                                    product_info["price"].get("discount_percent")
+                                ),
+                                "discount": product_info["price"].get(
+                                    "formatted_discount_percent"
+                                )
+                                or product_info["price"].get("formatted_discount_rate"),
+                            }
+                        )
             except Exception as e:
-                frappe.log_error(f"Error fetching product info for item {item.name}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching product info for item {item.name}: {str(e)}",
+                    "Get Offer Items API",
+                )
 
             try:
                 # Get item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -1736,7 +2056,10 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
                 else:
                     item["rating"] = 0  # No ratings, default to 0
             except Exception as e:
-                frappe.log_error(f"Error fetching ratings for item {item.item_code}: {str(e)}", "Get Offer Items API")
+                frappe.log_error(
+                    f"Error fetching ratings for item {item.item_code}: {str(e)}",
+                    "Get Offer Items API",
+                )
                 item["rating"] = 0  # Default rating if fetching fails
 
         # Determine total items and total pages for pagination
@@ -1759,20 +2082,19 @@ def get_offer_items_old(offer_title, page=1, page_size=10):
         frappe.local.response["http_status_code"] = 401
         frappe.response["data"] = {
             "status": "error",
-            "message": "Unauthorized access. Invalid or missing API key."
+            "message": "Unauthorized access. Invalid or missing API key.",
         }
     except frappe.ValidationError as e:
         frappe.local.response["http_status_code"] = 400
-        frappe.response["data"] = {
-            "status": "error",
-            "message": str(e)
-        }
+        frappe.response["data"] = {"status": "error", "message": str(e)}
     except Exception as e:
-        frappe.log_error(f"An unexpected error occurred: {str(e)}", "Get Offer Items API")
+        frappe.log_error(
+            f"An unexpected error occurred: {str(e)}", "Get Offer Items API"
+        )
         frappe.local.response["http_status_code"] = 500
         frappe.response["data"] = {
             "status": "error",
-            "message": "An unexpected error occurred. Please try again later."
+            "message": "An unexpected error occurred. Please try again later.",
         }
 
 
@@ -1786,7 +2108,9 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
         limit = int(limit) if limit else None
 
         # Fetch Pricing Rule details
-        pricing_rules = frappe.get_all("Pricing Rule", filters={"title": pricing_rule_name, "disable": 0})
+        pricing_rules = frappe.get_all(
+            "Pricing Rule", filters={"title": pricing_rule_name, "disable": 0}
+        )
         if not pricing_rules:
             frappe.throw(("Pricing Rule not found"))
 
@@ -1798,7 +2122,11 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
         # Determine rule application
         if pricing_rule.apply_on == "Item Code":
             # Fetch items associated with the Pricing Rule directly
-            items = frappe.get_all("Pricing Rule Item Code", filters={"parent": pricing_rule.name}, fields=["item_code"])
+            items = frappe.get_all(
+                "Pricing Rule Item Code",
+                filters={"parent": pricing_rule.name},
+                fields=["item_code"],
+            )
 
         elif pricing_rule.apply_on == "Item Group":
             # Fetch items in the specified item group
@@ -1822,66 +2150,86 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
             "Website Item",
             filters={
                 "item_code": ["in", item_codes],
-                "published": 1  # Ensure only published items are fetched
+                "published": 1,  # Ensure only published items are fetched
             },
             fields=[
-                "web_item_name", 
-                "name", 
-                "item_name", 
-                "item_code", 
-                "website_image", 
-                "variant_of", 
-                "has_variants", 
-                "item_group", 
-                "web_long_description", 
-                "short_description", 
-                "route", 
-                "website_warehouse", 
-                "ranking", 
-                "on_backorder"
+                "web_item_name",
+                "name",
+                "item_name",
+                "item_code",
+                "website_image",
+                "variant_of",
+                "has_variants",
+                "item_group",
+                "web_long_description",
+                "short_description",
+                "route",
+                "website_warehouse",
+                "ranking",
+                "on_backorder",
             ],
             order_by="creation desc",  # Order by creation date to get the newest items
-            limit=limit
+            limit=limit,
         )
 
         # Step 3: Enhance each item with pricing, rating, and valid_upto details
         for item in website_items:
             try:
                 # Fetch product information including pricing details
-                product_info = get_product_info_for_website(item.item_code, skip_quotation_creation=True).get(
-                    "product_info"
-                )
+                product_info = get_product_info_for_website(
+                    item.item_code, skip_quotation_creation=True
+                ).get("product_info")
                 if product_info and product_info["price"]:
-                    item.update({
-                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                        "formatted_price": product_info["price"].get("formatted_price"),
-                        "price_list_rate": product_info["price"].get("price_list_rate")
-                    })
+                    item.update(
+                        {
+                            "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                            "formatted_price": product_info["price"].get(
+                                "formatted_price"
+                            ),
+                            "price_list_rate": product_info["price"].get(
+                                "price_list_rate"
+                            ),
+                        }
+                    )
 
                 if product_info["price"].get("discount_percent"):
-                    item.update({
-                        "discount_percent": flt(product_info["price"].get("discount_percent"))
-                    })
+                    item.update(
+                        {
+                            "discount_percent": flt(
+                                product_info["price"].get("discount_percent")
+                            )
+                        }
+                    )
 
                 if item.get("formatted_mrp"):
-                    item.update({
-                        "discount": product_info["price"].get("formatted_discount_percent") or 
-                                    product_info["price"].get("formatted_discount_rate")
-                    })
+                    item.update(
+                        {
+                            "discount": product_info["price"].get(
+                                "formatted_discount_percent"
+                            )
+                            or product_info["price"].get("formatted_discount_rate")
+                        }
+                    )
 
                 # Map valid_upto from pricing rule to the item
-                pricing_rule_entry = next((p for p in items if p["item_code"] == item["item_code"]), None)
+                pricing_rule_entry = next(
+                    (p for p in items if p["item_code"] == item["item_code"]), None
+                )
                 if pricing_rule_entry:
                     item["valid_upto"] = pricing_rule.valid_upto
 
             except Exception as e:
-                frappe.log_error(message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching product info for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 continue
 
             try:
                 # Fetch item rating
-                ratings = frappe.get_all("Item Review", filters={"item": item.item_code}, fields=["rating"])
+                ratings = frappe.get_all(
+                    "Item Review", filters={"item": item.item_code}, fields=["rating"]
+                )
                 qty_limits = get_cart_qty_limits(item.item_code)
                 item["minimum_qty"] = qty_limits["minimum_qty"]
                 item["maximum_qty"] = qty_limits["maximum_qty"]
@@ -1892,8 +2240,10 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
                 else:
                     item["rating"] = 0
             except Exception as e:
-                frappe.log_error(message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}", 
-                                 title="Get New Website Items Error")
+                frappe.log_error(
+                    message=f"Error fetching ratings for item {item.get('item_code')}: {str(e)}",
+                    title="Get New Website Items Error",
+                )
                 item["rating"] = 0  # Default value if rating fetch fails
 
         frappe.response["data"] = {"items": website_items}
@@ -1903,11 +2253,19 @@ def get_items_by_pricing_rule(pricing_rule_name=None, limit=None):
 
     except frappe.ValidationError as e:
         frappe.log_error(("Validation error: {0}".format(str(e))))
-        frappe.response["data"] = {"message": "Validation error occurred", "error": str(e)}
+        frappe.response["data"] = {
+            "message": "Validation error occurred",
+            "error": str(e),
+        }
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Unexpected Error in get_items_by_pricing_rule")
-        frappe.response["data"] = {"message": "An unexpected error occurred. Please try again later.", "error": str(e)}
+        frappe.log_error(
+            frappe.get_traceback(), "Unexpected Error in get_items_by_pricing_rule"
+        )
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred. Please try again later.",
+            "error": str(e),
+        }
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -1920,11 +2278,13 @@ def submit_item_review(item_code, review):
         review (dict): The review details containing rating, review_title, and comment.
     """
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("Please log in to access this feature.") 
-        
-         # Get the current user
+            frappe.throw("Please log in to access this feature.")
+
+        # Get the current user
         user = frappe.local.session.user
 
         # Ensure that rating is within the allowed range (1 to 5 stars)
@@ -1937,30 +2297,46 @@ def submit_item_review(item_code, review):
             frappe.throw(_("Item does not exist"), frappe.DoesNotExistError)
 
         # Check if the item is listed on the website
-        website_item = frappe.db.get_value("Website Item", {"item_code": item_code}, "name")
+        website_item = frappe.db.get_value(
+            "Website Item", {"item_code": item_code}, "name"
+        )
         if not website_item:
-            frappe.throw(_("This item is not listed as a website item."), frappe.DoesNotExistError)
+            frappe.throw(
+                _("This item is not listed as a website item."),
+                frappe.DoesNotExistError,
+            )
 
         # Get the current customer (reviewer)
-        customer = frappe.db.get_value("Customer", {"email_id": frappe.session.user}, "name")
+        customer = frappe.db.get_value(
+            "Customer", {"email_id": frappe.session.user}, "name"
+        )
         if not customer:
-            frappe.throw(_("You must be a registered customer to submit a review."), frappe.ValidationError)
+            frappe.throw(
+                _("You must be a registered customer to submit a review."),
+                frappe.ValidationError,
+            )
 
         # add_item_review(website_item, review.get("review_title"), round(float(rating), 2), review.get("comment"))
 
-        if not frappe.db.exists("Item Review", {"user": frappe.session.user, "website_item": website_item}):
+        if not frappe.db.exists(
+            "Item Review", {"user": frappe.session.user, "website_item": website_item}
+        ):
             # Create a new Item Review document
-            item_review = frappe.get_doc({
-                "doctype": "Item Review",
-                "item": item_code,
-                "website_item": website_item,
-                "rating": rating,
-                "review_title": review.get("review_title"),
-                "comment": review.get("comment"),
-                "user": user,
-                "customer": get_customer(),  # Set the customer who submitted the review
-                "published_on": datetime.today().strftime("%d %B %Y")  # Set the current datetime for published_on
-            })
+            item_review = frappe.get_doc(
+                {
+                    "doctype": "Item Review",
+                    "item": item_code,
+                    "website_item": website_item,
+                    "rating": rating,
+                    "review_title": review.get("review_title"),
+                    "comment": review.get("comment"),
+                    "user": user,
+                    "customer": get_customer(),  # Set the customer who submitted the review
+                    "published_on": datetime.today().strftime(
+                        "%d %B %Y"
+                    ),  # Set the current datetime for published_on
+                }
+            )
 
             # Save the review
             item_review.save()
@@ -1991,13 +2367,17 @@ def submit_item_review(item_code, review):
 @frappe.whitelist(allow_guest=True)
 def add_to_wishlist(item_code):
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("Please log in to access this feature.") 
+            frappe.throw("Please log in to access this feature.")
         # Check if item already exists in the wishlist
-        if frappe.db.exists("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}):
+        if frappe.db.exists(
+            "Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}
+        ):
             return {"message": "Item already in wishlist"}
-        
+
         # Fetch Web Item Data by item_code
         web_item_data = frappe.db.get_value(
             "Website Item",
@@ -2040,61 +2420,99 @@ def add_to_wishlist(item_code):
 
         # Commit the transaction to the database
         frappe.db.commit()
-        
+
         if hasattr(frappe.local, "cookie_manager"):
-            frappe.local.cookie_manager.set_cookie("wish_count", str(len(wishlist.items)))
+            frappe.local.cookie_manager.set_cookie(
+                "wish_count", str(len(wishlist.items))
+            )
 
         frappe.response["data"] = {"message": "Item added to wishlist successfully"}
 
     except frappe.ValidationError as e:
         frappe.log_error(f"Error adding item to wishlist: {e}")
-        frappe.response["data"] = {"message": "Failed to add item to wishlist", "error": str(e)}
+        frappe.response["data"] = {
+            "message": "Failed to add item to wishlist",
+            "error": str(e),
+        }
 
     except Exception as e:
         frappe.log_error(f"Unexpected error: {e}")
-        frappe.response["data"] = {"message": "An unexpected error occurred", "error": str(e)}
-    
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred",
+            "error": str(e),
+        }
+
 
 @frappe.whitelist(allow_guest=True)
 def remove_from_wishlist(item_code):
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
         if frappe.local.session.user == None or frappe.session.user == "Guest":
-            frappe.throw("Please log in to access this feature.") 
+            frappe.throw("Please log in to access this feature.")
         # Check if the item exists in the user's wishlist
-        if frappe.db.exists("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}):
+        if frappe.db.exists(
+            "Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}
+        ):
             # Delete the wishlist item
-            frappe.db.delete("Wishlist Item", {"item_code": item_code, "parent": frappe.session.user})
+            frappe.db.delete(
+                "Wishlist Item", {"item_code": item_code, "parent": frappe.session.user}
+            )
             frappe.db.commit()  # Ensure the transaction is committed
 
             # Fetch updated wishlist items count for the user
-            wishlist_items = frappe.db.get_values("Wishlist Item", filters={"parent": frappe.session.user}, fieldname="name")
+            wishlist_items = frappe.db.get_values(
+                "Wishlist Item",
+                filters={"parent": frappe.session.user},
+                fieldname="name",
+            )
 
             # Update the wish count in cookies
             if hasattr(frappe.local, "cookie_manager"):
-                frappe.local.cookie_manager.set_cookie("wish_count", str(len(wishlist_items)))
+                frappe.local.cookie_manager.set_cookie(
+                    "wish_count", str(len(wishlist_items))
+                )
 
-            frappe.response["data"] = {"message": "Item removed from wishlist", "wish_count": len(wishlist_items)}
+            frappe.response["data"] = {
+                "message": "Item removed from wishlist",
+                "wish_count": len(wishlist_items),
+            }
         else:
-            frappe.response["data"] = {"message": "Item not found in wishlist", "wish_count": 0}
+            frappe.response["data"] = {
+                "message": "Item not found in wishlist",
+                "wish_count": 0,
+            }
 
     except frappe.DoesNotExistError:
-        frappe.log_error(f"Wishlist Item with item_code {item_code} not found for user {frappe.session.user}")
+        frappe.log_error(
+            f"Wishlist Item with item_code {item_code} not found for user {frappe.session.user}"
+        )
         frappe.response["data"] = {"error": "Item does not exist in the wishlist"}
 
     except frappe.ValidationError as e:
         frappe.log_error(f"Validation error while removing item from wishlist: {e}")
-        frappe.response["data"] = {"message": "There was a validation error", "error": str(e)}
+        frappe.response["data"] = {
+            "message": "There was a validation error",
+            "error": str(e),
+        }
 
     except Exception as e:
-        frappe.log_error(f"Unexpected error while removing item from wishlist: {str(e)}")
-        frappe.response["data"] = {"message": "An unexpected error occurred", "error": str(e)}
+        frappe.log_error(
+            f"Unexpected error while removing item from wishlist: {str(e)}"
+        )
+        frappe.response["data"] = {
+            "message": "An unexpected error occurred",
+            "error": str(e),
+        }
 
 
 @frappe.whitelist(allow_guest=True)
 def get_wishlist():
     try:
-        validate_auth_via_api_keys(frappe.get_request_header("Authorization", str).split(" ")[1:])
+        validate_auth_via_api_keys(
+            frappe.get_request_header("Authorization", str).split(" ")[1:]
+        )
         # validate_auth_via_api_keys(frappe.get_request_header("Authorization", str))
         if frappe.session.user == None or frappe.session.user == "Guest":
             frappe.throw("Please log in to access this feature.")
@@ -2102,52 +2520,67 @@ def get_wishlist():
         wishlist_items = frappe.get_all(
             "Wishlist Item",
             filters={"parent": frappe.session.user},
-            fields=["item_code", "item_name", "description", "image", "warehouse"]
+            fields=["item_code", "item_name", "description", "image", "warehouse"],
         )
 
         # Loop through wishlist items and append price
         for item in wishlist_items:
             get_stock_availability(item)
-            product_info = get_product_info_for_website(item["item_code"], skip_quotation_creation=True).get("product_info")
+            product_info = get_product_info_for_website(
+                item["item_code"], skip_quotation_creation=True
+            ).get("product_info")
             if product_info and product_info["price"]:
-                item.update({
-                    "formatted_mrp": product_info["price"].get("formatted_mrp"),
-                    "formatted_price": product_info["price"].get("formatted_price"),
-                    "price_list_rate": product_info["price"].get("price_list_rate")
-                })
+                item.update(
+                    {
+                        "formatted_mrp": product_info["price"].get("formatted_mrp"),
+                        "formatted_price": product_info["price"].get("formatted_price"),
+                        "price_list_rate": product_info["price"].get("price_list_rate"),
+                    }
+                )
             if product_info["price"].get("discount_percent"):
-                item.update({
-                    "discount_percent" : flt(product_info["price"].discount_percent)
-                })
+                item.update(
+                    {"discount_percent": flt(product_info["price"].discount_percent)}
+                )
             if item.formatted_mrp:
-                item.update({
-                    "discount" : product_info["price"].get("formatted_discount_percent") or product_info["price"].get(
-                        "formatted_discount_rate"
-                    )
-                })
+                item.update(
+                    {
+                        "discount": product_info["price"].get(
+                            "formatted_discount_percent"
+                        )
+                        or product_info["price"].get("formatted_discount_rate")
+                    }
+                )
 
         frappe.response["data"] = {
-                    "message": "Wishlist items fetched successfully.",
-                    "wishlist_items": wishlist_items
-                }
-    
+            "message": "Wishlist items fetched successfully.",
+            "wishlist_items": wishlist_items,
+        }
+
     except frappe.ValidationError as e:
         frappe.log_error(f"Validation error while retrieving wishlist for user: {e}")
-        frappe.response["data"] = {"message": "There was a validation error", "error": str(e)}
+        frappe.response["data"] = {
+            "message": "There was a validation error",
+            "error": str(e),
+        }
 
     except Exception as e:
-        frappe.log_error(f"Error retrieving wishlist for user {frappe.session.user}: {str(e)}")
-        frappe.response["data"] = {"message": "An error occurred while retrieving the wishlist", "error": str(e)}
-    
+        frappe.log_error(
+            f"Error retrieving wishlist for user {frappe.session.user}: {str(e)}"
+        )
+        frappe.response["data"] = {
+            "message": "An error occurred while retrieving the wishlist",
+            "error": str(e),
+        }
+
 
 @frappe.whitelist(allow_guest=True)
 def get_item_groups(limit=None):
     """
     API to fetch all active Item Groups in ERPNext, or limit the number of results.
-    
+
     Args:
         limit (int, optional): The number of item groups to return. Defaults to None for all.
-        
+
     Returns:
         dict: A dictionary containing the list of item groups.
     """
@@ -2158,21 +2591,23 @@ def get_item_groups(limit=None):
         # Fetch active Item Groups with optional limit
         item_groups = frappe.get_all(
             "Item Group",
-            filters={"show_in_website": 1},  # Filter only active groups shown on website
+            filters={
+                "show_in_website": 1
+            },  # Filter only active groups shown on website
             fields=["name", "parent_item_group", "image", "is_group"],
             order_by="weightage desc",
-            limit=limit  # Use limit only if provided, otherwise fetch all
+            limit=limit,  # Use limit only if provided, otherwise fetch all
         )
 
         if not item_groups:
             frappe.response["data"] = {
                 "message": "No item groups found.",
-                "item_groups": []
+                "item_groups": [],
             }
         else:
             frappe.response["data"] = {
                 "message": "Item groups fetched successfully.",
-                "item_groups": item_groups
+                "item_groups": item_groups,
             }
 
     except Exception as e:
@@ -2180,15 +2615,16 @@ def get_item_groups(limit=None):
         frappe.response["data"] = {
             "error": "An error occurred while fetching item groups."
         }
+
 
 @frappe.whitelist(allow_guest=True)
 def get_child_item_groups_by_parent(parent_item_group, limit=None):
     """
     API to fetch all active Item Groups in ERPNext, or limit the number of results.
-    
+
     Args:
         limit (int, optional): The number of item groups to return. Defaults to None for all.
-        
+
     Returns:
         dict: A dictionary containing the list of item groups.
     """
@@ -2199,21 +2635,24 @@ def get_child_item_groups_by_parent(parent_item_group, limit=None):
         # Fetch active Item Groups with optional limit
         item_groups = frappe.get_all(
             "Item Group",
-            filters={"show_in_website": 1, "parent_item_group": parent_item_group},  # Filter only active groups shown on website
+            filters={
+                "show_in_website": 1,
+                "parent_item_group": parent_item_group,
+            },  # Filter only active groups shown on website
             fields=["name", "parent_item_group", "image", "is_group"],
             order_by="weightage desc",
-            limit=limit  # Use limit only if provided, otherwise fetch all
+            limit=limit,  # Use limit only if provided, otherwise fetch all
         )
 
         if not item_groups:
             frappe.response["data"] = {
                 "message": "No item groups found.",
-                "item_groups": []
+                "item_groups": [],
             }
         else:
             frappe.response["data"] = {
                 "message": "Item groups fetched successfully.",
-                "item_groups": item_groups
+                "item_groups": item_groups,
             }
 
     except Exception as e:
@@ -2221,6 +2660,7 @@ def get_child_item_groups_by_parent(parent_item_group, limit=None):
         frappe.response["data"] = {
             "error": "An error occurred while fetching item groups."
         }
+
 
 @frappe.whitelist(allow_guest=True)
 def get_dashboard_categories():
@@ -2228,57 +2668,61 @@ def get_dashboard_categories():
         # Fetch active Item Groups with optional limit
         cooking_item_groups = frappe.get_all(
             "Item Group",
-            filters={"show_in_website": 1, "parent_item_group": "Cooking"},  # Filter only active groups shown on website
+            filters={
+                "show_in_website": 1,
+                "parent_item_group": "Cooking",
+            },  # Filter only active groups shown on website
             fields=["name", "parent_item_group", "image", "is_group"],
             order_by="weightage desc",
-            limit=8  # Use limit only if provided, otherwise fetch all
+            limit=8,  # Use limit only if provided, otherwise fetch all
         )
 
         bv_item_groups = frappe.get_all(
             "Item Group",
-            filters={"show_in_website": 1, "parent_item_group": "Beverages"},  # Filter only active groups shown on website
+            filters={
+                "show_in_website": 1,
+                "parent_item_group": "Beverages",
+            },  # Filter only active groups shown on website
             fields=["name", "parent_item_group", "image", "is_group"],
             order_by="weightage desc",
-            limit=8  # Use limit only if provided, otherwise fetch all
+            limit=8,  # Use limit only if provided, otherwise fetch all
         )
 
         pcare_item_groups = frappe.get_all(
             "Item Group",
-            filters={"show_in_website": 1, "parent_item_group": "Personal Care"},  # Filter only active groups shown on website
+            filters={
+                "show_in_website": 1,
+                "parent_item_group": "Personal Care",
+            },  # Filter only active groups shown on website
             fields=["name", "parent_item_group", "image", "is_group"],
             order_by="weightage desc",
-            limit=8  # Use limit only if provided, otherwise fetch all
+            limit=8,  # Use limit only if provided, otherwise fetch all
         )
 
         best_item_groups = frappe.get_all(
             "Item Group",
-            filters={"show_in_website": 1},  # Filter only active groups shown on website
+            filters={
+                "show_in_website": 1
+            },  # Filter only active groups shown on website
             fields=["name", "parent_item_group", "image", "is_group"],
             order_by="weightage desc",
-            limit=8  # Use limit only if provided, otherwise fetch all
+            limit=8,  # Use limit only if provided, otherwise fetch all
         )
 
         if not cooking_item_groups:
             frappe.response["data"] = {
                 "message": "No item groups found.",
-                "item_groups": []
+                "item_groups": [],
             }
         else:
             frappe.response["data"] = {
                 "message": "Item groups fetched successfully.",
-                "item_groups": [{
-                    "cooking_item_groups": cooking_item_groups
-                    },
-                    {
-                        "beverages_item_groups":bv_item_groups
-                    },
-                    {
-                        "pcare_item_groups":pcare_item_groups
-                    },
-                    {
-                        "best_item_groups":best_item_groups
-                    }
-                ]
+                "item_groups": [
+                    {"cooking_item_groups": cooking_item_groups},
+                    {"beverages_item_groups": bv_item_groups},
+                    {"pcare_item_groups": pcare_item_groups},
+                    {"best_item_groups": best_item_groups},
+                ],
             }
 
     except Exception as e:
@@ -2287,58 +2731,66 @@ def get_dashboard_categories():
             "error": "An error occurred while fetching item groups."
         }
 
+
 def get_customer(silent=False):
-	"""
-	silent: Return customer if exists else return nothing. Dont throw error.
-	"""
-	user = frappe.session.user
-	contact_name = get_contact_name(user)
-	customer = None
+    """
+    silent: Return customer if exists else return nothing. Dont throw error.
+    """
+    user = frappe.session.user
+    contact_name = get_contact_name(user)
+    customer = None
 
-	if contact_name:
-		contact = frappe.get_doc("Contact", contact_name)
-		for link in contact.links:
-			if link.link_doctype == "Customer":
-				customer = link.link_name
-				break
+    if contact_name:
+        contact = frappe.get_doc("Contact", contact_name)
+        for link in contact.links:
+            if link.link_doctype == "Customer":
+                customer = link.link_name
+                break
 
-	if customer:
-		return frappe.db.get_value("Customer", customer)
-	elif silent:
-		return None
-	else:
-		# should not reach here unless via an API
-		frappe.throw(
-			_("You are not a verified customer yet. Please contact us to proceed."), exc=UnverifiedReviewer
-		)
+    if customer:
+        return frappe.db.get_value("Customer", customer)
+    elif silent:
+        return None
+    else:
+        # should not reach here unless via an API
+        frappe.throw(
+            _("You are not a verified customer yet. Please contact us to proceed."),
+            exc=UnverifiedReviewer,
+        )
 
 
 @frappe.whitelist(allow_guest=True)
 def generate_session_id():
     # Get client IP address
-    client_ip = frappe.get_request_header('X-Forwarded-For') or frappe.get_request_header('X-Real-IP') or frappe.local.request.remote_addr
-    
+    client_ip = (
+        frappe.get_request_header("X-Forwarded-For")
+        or frappe.get_request_header("X-Real-IP")
+        or frappe.local.request.remote_addr
+    )
+
     # Get user agent (browser and device info)
-    user_agent = frappe.get_request_header('User-Agent')
-    
+    user_agent = frappe.get_request_header("User-Agent")
+
     # Combine IP address and user-agent into a unique string
     unique_string = f"{client_ip}-{user_agent}-{uuid.uuid4()}"
-    
+
     # Hash the unique string to generate session ID
     session_id = hashlib.sha256(unique_string.encode()).hexdigest()
 
     frappe.local.cookie_manager = CookieManager()
-    frappe.local.cookie_manager.set_cookie('session_id', session_id, max_age=365 * 24 * 60 * 60, httponly=True, secure=False)
-    
+    frappe.local.cookie_manager.set_cookie(
+        "session_id",
+        session_id,
+        max_age=365 * 24 * 60 * 60,
+        httponly=True,
+        secure=False,
+    )
+
     # # Set session_id in response header as a cookie
     # frappe.set_cookie('session_id', session_id, max_age=365 * 24 * 60 * 60, httponly=True, secure=False)
-    
+
     # Return the session ID as a response as well, if needed for logging
-    return {
-        'session_id': session_id,
-        'ip_address': client_ip,
-        'user_agent': user_agent
-    }
+    return {"session_id": session_id, "ip_address": client_ip, "user_agent": user_agent}
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
@@ -2359,7 +2811,7 @@ def get_coverage_area_info():
             {
                 "address": "105-07 150th ST Jamaica, NY 11435",
                 "hours": "10AM - 8PM",
-                "days": "7 Days a week"
+                "days": "7 Days a week",
             }
         ]
 
@@ -2369,13 +2821,13 @@ def get_coverage_area_info():
                 {
                     "range": "$151 and up",
                     "delivery_charge": "$5",
-                    "areas": ["Queens", "Long Island (Nassau County)"]
+                    "areas": ["Queens", "Long Island (Nassau County)"],
                 },
                 {
                     "range": "Below $150",
                     "delivery_charge": "$10",
-                    "areas": ["Queens", "Long Island (Nassau County)"]
-                }
+                    "areas": ["Queens", "Long Island (Nassau County)"],
+                },
             ],
             "next_day_delivery": [
                 # {
@@ -2386,23 +2838,23 @@ def get_coverage_area_info():
                 {
                     "range": "$151 and up",
                     "delivery_charge": "Free",
-                    "areas": ["Queens", "Long Island (Nassau County)"]
+                    "areas": ["Queens", "Long Island (Nassau County)"],
                 },
                 {
                     "range": "Below $150",
                     "delivery_charge": "$5",
-                    "areas": ["Queens", "Long Island (Nassau County)"]
-                }
-            ]
+                    "areas": ["Queens", "Long Island (Nassau County)"],
+                },
+            ],
         }
 
         # Return API Response
         frappe.response["data"] = {
             "status": "success",
             "pickup_locations": pickup_locations,
-            "home_delivery": home_delivery
+            "home_delivery": home_delivery,
         }
-    
+
     except Exception as e:
         # Log error for debugging
         frappe.log_error(frappe.get_traceback(), "Failed to retrieve delivery info")
@@ -2432,9 +2884,48 @@ def get_shipping_allowed_neighborhood():
                 "East Elmhurst": ["11369", "11370", "11371"],
                 "Edgemere": ["11690"],
                 "Elmhurst": ["11373", "11380"],
-                "Far Rockaway": ["11690", "11691", "11692", "11693", "11694", "11695", "11697"],
+                "Far Rockaway": [
+                    "11690",
+                    "11691",
+                    "11692",
+                    "11693",
+                    "11694",
+                    "11695",
+                    "11697",
+                ],
                 "Floral Park": ["11004", "11005"],
-                "Flushing": ["11351", "11352", "11354", "11355", "11356", "11357", "11358", "11359", "11360", "11361", "11362", "11363", "11364", "11365", "11366", "11367", "11368", "11369", "11370", "11371", "11372", "11373", "11374", "11375", "11377", "11378", "11379", "11380", "11385", "11386"],
+                "Flushing": [
+                    "11351",
+                    "11352",
+                    "11354",
+                    "11355",
+                    "11356",
+                    "11357",
+                    "11358",
+                    "11359",
+                    "11360",
+                    "11361",
+                    "11362",
+                    "11363",
+                    "11364",
+                    "11365",
+                    "11366",
+                    "11367",
+                    "11368",
+                    "11369",
+                    "11370",
+                    "11371",
+                    "11372",
+                    "11373",
+                    "11374",
+                    "11375",
+                    "11377",
+                    "11378",
+                    "11379",
+                    "11380",
+                    "11385",
+                    "11386",
+                ],
                 "Forest Hills": ["11375"],
                 "Fort Tilden": ["11695"],
                 "Fort Totten": ["11359"],
@@ -2444,14 +2935,48 @@ def get_shipping_allowed_neighborhood():
                 "Hollis": ["11423"],
                 "Howard Beach": ["11414"],
                 "Jackson Heights": ["11372"],
-                "Jamaica": ["11411", "11412", "11413", "11414", "11415", "11416", "11417", "11418", "11419", "11420", "11421", "11422", "11423", "11424", "11426", "11427", "11428", "11429", "11430", "11431", "11432", "11433", "11434", "11435", "11436"],
+                "Jamaica": [
+                    "11411",
+                    "11412",
+                    "11413",
+                    "11414",
+                    "11415",
+                    "11416",
+                    "11417",
+                    "11418",
+                    "11419",
+                    "11420",
+                    "11421",
+                    "11422",
+                    "11423",
+                    "11424",
+                    "11426",
+                    "11427",
+                    "11428",
+                    "11429",
+                    "11430",
+                    "11431",
+                    "11432",
+                    "11433",
+                    "11434",
+                    "11435",
+                    "11436",
+                ],
                 "Jamaica Estates": ["11432"],
                 "John F Kennedy Airport": ["11430"],
                 "Kew Gardens": ["11415"],
                 "La Guardia Airport": ["11371"],
                 "Laurelton": ["11413"],
                 "Little Neck": ["11362", "11363"],
-                "Long Island City": ["11101", "11102", "11103", "11104", "11105", "11106", "11109"],
+                "Long Island City": [
+                    "11101",
+                    "11102",
+                    "11103",
+                    "11104",
+                    "11105",
+                    "11106",
+                    "11109",
+                ],
                 "Malba": ["11357"],
                 "Maspeth": ["11378"],
                 "Middle Village": ["11379"],
@@ -2474,76 +2999,201 @@ def get_shipping_allowed_neighborhood():
                 "Wave Crest": ["11690"],
                 "Whitestone": ["11357"],
                 "Woodhaven": ["11421"],
-                "Woodside": ["11377"]
+                "Woodside": ["11377"],
             },
             "Nassau County": {
                 "Albertson": ["11507"],
-                "Atlantic Beach": ["11509"],
                 "Alden Manor": ["11003"],
+                "Allenwood": ["11021"],
+                "Argo Village": ["11003"],
+                "Atlantic Beach": ["11509"],
                 "Baldwin": ["11510"],
                 "Baldwin Harbor": ["11510"],
+                "Bar Harbor": ["11762"],
+                "Barnum Island": ["11558"],
+                "Baxter Estates": ["11050"],
                 "Bayville": ["11709"],
+                "Bellerose Terrace": ["11001"],
+                "Bellerose Village": ["11001"],
                 "Bellmore": ["11710"],
                 "Bethpage": ["11714"],
+                "Briar Park": ["11793"],
+                "Brookville": ["11545", "11548"],
                 "Carle Place": ["11514"],
                 "Cedarhurst": ["11516"],
+                "Centre Island": ["11771"],
+                "Cove Neck": ["11771"],
+                "East Atlantic Beach": ["11561"],
+                "East Farmingdale": ["11735"],
+                "East Hills": ["11548", "11576", "11577"],
+                "East Massapequa": ["11758"],
                 "East Meadow": ["11554"],
                 "East Norwich": ["11732"],
                 "East Rockaway": ["11518"],
+                "East Williston": ["11596"],
                 "Elmont": ["11003"],
-                "Farmingdale": ["11735"],
+                "Far Rockaway": ["11096"],
+                "Farmingdale": ["11735", "11736", "11737", "11774"],
                 "Floral Park": ["11001", "11002", "11003"],
                 "Franklin Square": ["11010"],
                 "Freeport": ["11520"],
-                "Garden City": ["11530", "11531", "11599"],
+                "Garden City": ["11530", "11531", "11535", "11536", "11599"],
+                "Garden City Park": ["11040"],
+                "Garden City South": ["11530"],
                 "Glen Cove": ["11542"],
                 "Glen Head": ["11545"],
                 "Glenwood Landing": ["11547"],
-                "Great Neck": ["11020", "11021", "11022", "11023", "11024", "11026", "11027"],
+                "Great Neck": [
+                    "11020",
+                    "11021",
+                    "11022",
+                    "11023",
+                    "11024",
+                    "11025",
+                    "11026",
+                    "11027",
+                ],
+                "Great Neck Estates": ["11021"],
                 "Greenvale": ["11548"],
-                "Hempstead": ["11550", "11551"],
+                "Harbor Acres": ["11050"],
+                "Harbor Hills": ["11023"],
+                "Harbor Isle": ["11558"],
+                "Hempstead": ["11549", "11550", "11551"],
+                "Herricks": ["11040"],
                 "Hewlett": ["11557"],
-                "Hicksville": ["11801", "11802", "11803", "11804"],
+                "Hewlett Bay": ["11557"],
+                "Hewlett Bay Park": ["11557"],
+                "Hewlett Harbor": ["11557"],
+                "Hewlett Neck": ["11598"],
+                "Hicksville": [
+                    "11801",
+                    "11802",
+                    "11803",
+                    "11804",
+                    "11815",
+                    "11819",
+                    "11854",
+                    "11855",
+                ],
                 "Inwood": ["11096"],
                 "Island Park": ["11558"],
-                "Jericho": ["11753"],
+                "Island Trees": ["11756"],
+                "Jericho": ["11753", "11853"],
+                "Kenilworth": ["11024"],
+                "Kensington": ["11021"],
                 "Kings Point": ["11024"],
+                "Lake Gardens": ["11022"],
+                "Lake Success": ["11020", "11042"],
+                "Lakeview": ["11552", "11570"],
+                "Lakeville Estates": ["11040"],
+                "Lattingtown": ["11560"],
+                "Laurel Hollow": ["11771", "11791"],
                 "Lawrence": ["11559"],
                 "Levittown": ["11756"],
                 "Lido Beach": ["11561"],
-                "Lynbrook": ["11563"],
+                "Locust Valley": ["11560"],
+                "Locustwood": ["11003"],
+                "Long Beach": ["11561"],
+                "Lynbrook": ["11563", "11564"],
                 "Malverne": ["11565"],
                 "Manhasset": ["11030"],
+                "Manhasset Hills": ["11040"],
+                "Manorhaven": ["11050"],
                 "Massapequa": ["11758"],
                 "Massapequa Park": ["11762"],
+                "Matinecock": ["11560"],
+                "Meacham": ["11003"],
+                "Meadowmere Park": ["11559"],
                 "Merrick": ["11566"],
                 "Mill Neck": ["11765"],
                 "Mineola": ["11501"],
-                "New Hyde Park": ["11040", "11042"],
+                "Mitchell Field": ["11530", "11553"],
+                "Muttontown": ["11545", "11732", "11753", "11771", "11791"],
+                "New Cassel": ["11590"],
+                "New Hyde Park": ["11040", "11041", "11042", "11043", "11044", "11099"],
                 "North Baldwin": ["11510"],
                 "North Bellmore": ["11710"],
+                "North Hills": ["11040"],
+                "North Massapequa": ["11758"],
                 "North Merrick": ["11566"],
+                "North New Hyde Park": ["11040"],
+                "North Valley Stream": ["11580"],
+                "North Wantagh": ["11793"],
+                "North Woodmere": ["11581"],
                 "Oceanside": ["11572"],
                 "Old Bethpage": ["11804"],
+                "Old Brookville": ["11545", "11548"],
                 "Old Westbury": ["11568"],
                 "Oyster Bay": ["11771"],
+                "Oyster Bay Cove": ["11771", "11791"],
+                "Plainedge": ["11756"],
                 "Plainview": ["11803"],
+                "Plandome": ["11030"],
                 "Point Lookout": ["11569"],
-                "Port Washington": ["11050"],
-                "Rockville Centre": ["11570", "11571", "11572"],
+                "Port Washington": [
+                    "11050",
+                    "11051",
+                    "11052",
+                    "11053",
+                    "11054",
+                    "11055",
+                ],
+                "Rockville Centre": ["11570", "11571", "11572", "11592"],
                 "Roosevelt": ["11575"],
+                "Roosevelt Field": ["11530", "11531"],
                 "Roslyn": ["11576"],
+                "Roslyn Estates": ["11576"],
+                "Roslyn Harbor": ["11545", "11548", "11576"],
                 "Roslyn Heights": ["11577"],
+                "Russell Gardens": ["11021"],
+                "Saddle Rock": ["11023"],
+                "Saddle Rock Estates": ["11021"],
+                "Sands Point": ["11050"],
                 "Sea Cliff": ["11579"],
                 "Seaford": ["11783"],
+                "South Farmingdale": ["11735"],
+                "South Floral Park": ["11001"],
+                "South Hempstead": ["11550"],
                 "Stewart Manor": ["11530"],
-                "Syosset": ["11791"],
-                "Uniondale": ["11553"],
-                "Valley Stream": ["11580", "11581", "11582"],
+                "Strathmore": ["11030"],
+                "Sutton Park": ["11559"],
+                "Syosset": ["11773", "11791"],
+                "The Terrace": ["11050"],
+                "Thomaston": ["11021"],
+                "Uniondale": ["11553", "11555", "11556", "11588"],
+                "University Gardens": ["11020"],
+                "Upper Brookville": ["11545", "11732", "11771"],
+                "Valley Stream": ["11580", "11581", "11582", "11583"],
                 "Wantagh": ["11793"],
                 "West Hempstead": ["11552"],
-                "Williston Park": ["11596"]
-            }
+                "Westbury": ["11568", "11590", "11593", "11594", "11595", "11597"],
+                "Williston Park": ["11596"],
+                "Woodbury": ["11797"],
+                "Woodmere": ["11598"],
+                "Woodsburgh": ["11598"],
+            },
+            "Suffolk County": {
+                "Babylon": ["11702", "11703", "11704", "11707"],
+                "Bohemia": ["11716"],
+                "Brentwood": ["11717"],
+                "Centereach": ["11720"],
+                "Coram": ["11727"],
+                "Deer Park": ["11729"],
+                "Dix Hills": ["11746"],
+                "Huntington": ["11743"],
+                "Huntington Station": ["11746", "11747", "11750"],
+                "Kings Park": ["11754"],
+                "Lake Ronkonkoma": ["11779"],
+                "Lake Ronkonkoma Heights": ["11779"],
+                "Lindenhurst": ["11757"],
+                "Melville": ["11747", "11750", "11775"],
+                "South Huntington": ["11746"],
+                "West Hills": ["11743"],
+                "Wyandanch": ["11798"],
+                "Ronkonkoma": ["11749", "11779"],
+                "Smithtown": ["11745", "11787", "11788"],
+                "Selden": ["11784"],
+            },
         }
 
         # Return API Response
@@ -2551,10 +3201,12 @@ def get_shipping_allowed_neighborhood():
             "status": "success",
             "neighborhoods": data,
         }
-    
+
     except Exception as e:
         # Log error for debugging
-        frappe.log_error(frappe.get_traceback(), "Failed to retrieve neighborhoods info")
+        frappe.log_error(
+            frappe.get_traceback(), "Failed to retrieve neighborhoods info"
+        )
         frappe.throw(_("An error occurred while fetching neighborhoods information."))
 
 
@@ -2565,9 +3217,11 @@ def subscribe_to_newsletter(email):
         subscribe(email=email, email_group=newsletter_name)
         return {"status": "success", "message": "Successfully subscribed"}
     except Exception as e:
-        frappe.log_error(f"Subscription Error: {str(e)}", "Newsletter Subscription Error")
+        frappe.log_error(
+            f"Subscription Error: {str(e)}", "Newsletter Subscription Error"
+        )
         return {"status": "error", "message": "Subscription failed", "error": str(e)}
-    
+
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def get_slideshow(slideshow_name):
@@ -2578,18 +3232,17 @@ def get_slideshow(slideshow_name):
             frappe.throw(_("Slideshow not found"), frappe.DoesNotExistError)
 
         # Prepare slideshow data
-        slideshow_data = {
-            "title": slideshow.slideshow_name,
-            "slides": []
-        }
+        slideshow_data = {"title": slideshow.slideshow_name, "slides": []}
 
         for slide in slideshow.slideshow_items:
-            slideshow_data["slides"].append({
-                "image": slide.image,
-                "caption": slide.heading,
-                "description": slide.description,
-                "url": slide.url
-            })
+            slideshow_data["slides"].append(
+                {
+                    "image": slide.image,
+                    "caption": slide.heading,
+                    "description": slide.description,
+                    "url": slide.url,
+                }
+            )
 
         return slideshow_data
         # frappe.response["data"] = {
@@ -2599,18 +3252,16 @@ def get_slideshow(slideshow_name):
 
     except frappe.DoesNotExistError:
         frappe.local.response["http_status_code"] = 404
-        frappe.response["data"] = {
-            "message": "Slideshow not found"
-        }
+        frappe.response["data"] = {"message": "Slideshow not found"}
 
     except frappe.PermissionError:
         frappe.local.response["http_status_code"] = 403
-        frappe.response["data"] = {
-            "message": "Permission denied"
-        }
+        frappe.response["data"] = {"message": "Permission denied"}
 
     except Exception as e:
-        frappe.log_error(f"Unexpected error in get_slideshow: {str(e)}", "Slideshow API Error")
+        frappe.log_error(
+            f"Unexpected error in get_slideshow: {str(e)}", "Slideshow API Error"
+        )
         frappe.local.response["http_status_code"] = 500
         frappe.response["data"] = {
             "message": "An unexpected error occurred. Please try again later."
@@ -2619,16 +3270,20 @@ def get_slideshow(slideshow_name):
 
 @frappe.whitelist(allow_guest=True)
 def download_app():
-    user_agent = frappe.request.headers.get('User-Agent')
+    user_agent = frappe.request.headers.get("User-Agent")
 
-    if 'Android' in user_agent:
+    if "Android" in user_agent:
         # Redirect to Google Play Store
         frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = "https://play.google.com/store/apps/details?id=com.keno"
-    elif 'iPhone' in user_agent or 'iPad' in user_agent:
+        frappe.local.response["location"] = (
+            "https://play.google.com/store/apps/details?id=com.keno"
+        )
+    elif "iPhone" in user_agent or "iPad" in user_agent:
         # Redirect to Apple App Store
         frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = "https://apps.apple.com/us/app/keno-today/id6736888399"
+        frappe.local.response["location"] = (
+            "https://apps.apple.com/us/app/keno-today/id6736888399"
+        )
     else:
         # Fallback URL (e.g., your website or app info page)
         frappe.local.response["type"] = "redirect"
