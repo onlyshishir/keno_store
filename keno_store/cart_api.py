@@ -2766,7 +2766,23 @@ def fetch_cart(session_id=None):
             if quotation:
                 quotation = frappe.get_doc("Quotation", quotation[0].name)
             else:
-                frappe.throw("Cart is emplty!!")
+                # frappe.throw("Cart is emplty!!")
+                # Create a new quotation for the session
+                company = frappe.db.get_single_value("Webshop Settings", "company")
+                quotation = frappe.get_doc(
+                    {
+                        "doctype": "Quotation",
+                        "quotation_to": "Customer",  # You can change this to "Lead" if needed
+                        "party_name": "Guest",  # Associate with the default customer
+                        "transaction_date": frappe.utils.nowdate(),
+                        "custom_session_id": session_id,  # Custom field to track guest session
+                        "items": [],
+                        "company": company,
+                        "order_type": "Shopping Cart",
+                        "status": "Draft",
+                        "docstatus": 0,
+                    }
+                )
         else:
             quotation = _get_cart_quotation(party)
 
