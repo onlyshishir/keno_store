@@ -640,13 +640,14 @@ def update_cart(item_code, qty, additional_notes=None):
                 "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
             )
 
-            # Check if sufficient stock is available
-            if projected_qty < qty:
-                frappe.throw(
-                    _("Only {0} units of {1} are available in stock.").format(
-                        projected_qty, item_name
+            if projected_qty:
+                # Check if sufficient stock is available
+                if projected_qty < qty:
+                    frappe.throw(
+                        _("Only {0} units of {1} are available in stock.").format(
+                            projected_qty, item_name
+                        )
                     )
-                )
 
             # Update or add item to quotation
             quotation_items = quotation.get("items", {"item_code": item_code})
@@ -1510,13 +1511,14 @@ def update_guest_cart(
                     "Bin", {"item_code": item_code, "warehouse": warehouse}, "projected_qty"
                 )
 
-                # Check if sufficient stock is available
-                if projected_qty < qty:
-                    frappe.throw(
-                        _("Only {0} units of {1} are available in stock.").format(
-                            projected_qty, item_name
+                if projected_qty:
+                    # Check if sufficient stock is available
+                    if projected_qty < qty:
+                        frappe.throw(
+                            _("Only {0} units of {1} are available in stock.").format(
+                                projected_qty, item_name
+                            )
                         )
-                    )
 
                 quotation_items = quotation.get("items", {"item_code": item_code})
                 if not quotation_items:
